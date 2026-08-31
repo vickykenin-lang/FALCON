@@ -5,6 +5,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 ALLOWED_TYPES = {"OBSERVATION","REQUEST","DECISION","ACTION","RESULT","FAILURE","ALERT","HEARTBEAT","MEMORY","LEARNING"}
+MISSION_STATES = {"QUEUED","DISCOVERING","PLANNING","EXECUTING","VERIFYING","ADAPTING","SUCCEEDED","FAILED","BLOCKED"}
 
 @dataclass(frozen=True)
 class Event:
@@ -33,3 +34,10 @@ class Mission:
     status: str = "QUEUED"
     attempts: int = 0
     checkpoint: dict[str, Any] = field(default_factory=dict)
+    acceptance_criteria: dict[str, Any] = field(default_factory=dict)
+    context: dict[str, Any] = field(default_factory=dict)
+
+    def transition(self, state: str) -> None:
+        if state not in MISSION_STATES:
+            raise ValueError(f"Unsupported mission state: {state}")
+        self.status = state
