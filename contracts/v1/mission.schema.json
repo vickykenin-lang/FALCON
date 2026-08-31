@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "falcon://contracts/v1/mission",
+  "title": "FALCON Mission V1",
+  "type": "object",
+  "required": ["mission_id", "objective", "authority", "status"],
+  "properties": {
+    "mission_id": {"type": "string", "minLength": 1},
+    "objective": {"type": "string", "minLength": 1},
+    "authority": {"const": "FOUNDER"},
+    "status": {"enum": ["QUEUED", "DISCOVERING", "PLANNING", "EXECUTING", "VERIFYING", "ADAPTING", "SUCCEEDED", "FAILED", "BLOCKED"]},
+    "acceptance_criteria": {"type": "object"},
+    "context": {"type": "object"},
+    "contract_version": {"const": "1.0"}
+  },
+  "additionalProperties": false
+}
