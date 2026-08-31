@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "falcon://contracts/v1/event",
+  "title": "FALCON Event V1",
+  "type": "object",
+  "required": ["event_id", "event_type", "source", "timestamp", "payload"],
+  "properties": {
+    "event_id": {"type": "string", "minLength": 1},
+    "event_type": {"type": "string", "minLength": 1},
+    "source": {"type": "string", "minLength": 1},
+    "target": {"type": ["string", "null"]},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "correlation_id": {"type": ["string", "null"]},
+    "payload": {"type": "object"},
+    "contract_version": {"const": "1.0"}
+  },
+  "additionalProperties": false
+}
