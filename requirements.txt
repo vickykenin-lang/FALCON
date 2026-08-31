@@ -1,0 +1,2 @@
+# FALCON V1 core intentionally uses Python standard library only.
+# Provider/tool adapters may declare optional dependencies independently later.
