@@ -9,15 +9,31 @@ class FalconV1Tests(unittest.TestCase):
         bus=EventBus(); seen=[]; bus.subscribe("HEARTBEAT", seen.append)
         e=Event("HEARTBEAT","test",{"status":"HEALTHY"}); bus.publish(e)
         self.assertEqual(seen[0].event_id,e.event_id)
+
     def test_memory(self):
         with tempfile.TemporaryDirectory() as d:
             m=MemoryStore(os.path.join(d,"m.jsonl")); m.remember(Event("MEMORY","test",{"x":1}))
             self.assertEqual(m.recent(1)[0]["payload"]["x"],1)
-    def test_runtime_mission(self):
+
+    def test_runtime_mission_and_resume(self):
         with tempfile.TemporaryDirectory() as d:
-            old=os.getcwd(); os.chdir(d)
-            try:
-                r=Runtime(); m=r.accept("test objective")
-                self.assertEqual(m.status,"ACTIVE"); self.assertGreaterEqual(len(r.bus.history),2)
-            finally: os.chdir(old)
+            r=Runtime(state_dir=d); m=r.accept("test objective")
+            self.assertEqual(m.status,"DISCOVERING")
+            r.advance(m); self.assertEqual(m.status,"PLANNING")
+            r.advance(m); self.assertEqual(m.status,"EXECUTING")
+            r.advance(m); self.assertEqual(m.status,"VERIFYING")
+            r.advance(m, Event("RESULT","execution",{"ok":False}, correlation_id=m.mission_id))
+            self.assertEqual(m.status,"ADAPTING")
+            r.advance(m); self.assertEqual(m.status,"PLANNING"); self.assertEqual(m.attempts,1)
+            restored=r.resume(m.mission_id)
+            self.assertEqual(restored.status,"PLANNING")
+            self.assertEqual(restored.objective,"test objective")
+
+    def test_runtime_success(self):
+        with tempfile.TemporaryDirectory() as d:
+            r=Runtime(state_dir=d); m=r.accept("success objective")
+            r.advance(m); r.advance(m); r.advance(m)
+            r.advance(m, Event("RESULT","execution",{"ok":True}, correlation_id=m.mission_id))
+            self.assertEqual(m.status,"SUCCEEDED")
+
 if __name__=="__main__": unittest.main()
