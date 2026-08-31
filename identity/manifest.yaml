@@ -1,0 +1,13 @@
+name: FALCON
+version: 0.1.0
+architecture: modular-contract-first
+status: BUILDING
+authority:
+  type: founder_direct
+  parent_system: null
+principles:
+  - independent_identity
+  - isolated_modules
+  - explicit_contracts
+  - replaceable_implementations
+  - observable_runtime
