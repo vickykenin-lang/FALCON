@@ -11,6 +11,7 @@ from governance.policy import Governance
 from scheduler.engine import Schedule, Scheduler
 from scheduler.bridge import SchedulerBridge
 from brain.engine import Brain
+from learning.evaluator import Evaluator
 from bootstrap import build_runtime
 CAP="test.execute"
 class FakeAdapter(ExecutionAdapter):
@@ -49,7 +50,7 @@ class FalconV1Tests(unittest.TestCase):
         allowed,reason=self.governance().authorize(Event("ACTION","brain",{"adapter":"fake","operation":"do_work","capability":"unknown","risk":"low"})); self.assertFalse(allowed); self.assertEqual(reason,"capability_not_allowed:unknown")
     def test_brain_driver_replans_with_memory_evidence(self):
         with tempfile.TemporaryDirectory() as d:
-            provider=SequenceProvider(); brain=Brain(provider); memory=MemoryStore(os.path.join(d,"memory.jsonl")); memory.remember(Event("RESULT","old",{"ok":False,"objective":"recover service","lesson":"retry alternative"})); r=self.runtime(d,brain,memory); m=r.accept("recover service"); ex=Executor(); adapter=FakeAdapter(1); ex.register(adapter); result=BrainDriver(brain,ex,self.governance(),r,memory,max_replans=2).run(m); self.assertEqual(result.status,"SUCCEEDED"); self.assertEqual(provider.calls,2); self.assertTrue(provider.contexts[0].get("relevant_memory")); self.assertIn("previous_evidence",provider.contexts[1])
+            provider=SequenceProvider(); brain=Brain(provider); memory=MemoryStore(os.path.join(d,"memory.jsonl")); memory.remember(Event("RESULT","old",{"ok":False,"objective":"recover service","lesson":"retry alternative"})); r=self.runtime(d,brain,memory); m=r.accept("recover service"); ex=Executor(); adapter=FakeAdapter(1); ex.register(adapter); result=BrainDriver(brain,ex,self.governance(),r,memory,max_replans=2,evaluator=Evaluator()).run(m); self.assertEqual(result.status,"SUCCEEDED"); self.assertEqual(provider.calls,2); self.assertTrue(provider.contexts[0].get("relevant_memory")); self.assertIn("previous_evidence",provider.contexts[1])
     def test_recurring_scheduler_persists_and_recovers(self):
         with tempfile.TemporaryDirectory() as d:
             path=os.path.join(d,"s.json"); start=datetime(2026,9,1,tzinfo=timezone.utc); s=Scheduler(path); item=s.add(Schedule("check","RECURRING","every:60"),now=start); self.assertEqual(len(s.tick(start+timedelta(seconds=60))),1); self.assertIn(item.schedule_id,Scheduler(path).schedules)
