@@ -10,10 +10,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["adapter", "operation"],
+        "required": ["adapter", "operation", "capability"],
         "properties": {
           "adapter": {"type": "string", "minLength": 1},
           "operation": {"type": "string", "minLength": 1},
+          "capability": {"type": "string", "minLength": 1},
           "args": {"type": "object"},
           "risk": {"enum": ["low", "credential_required", "restricted"]}
         },
