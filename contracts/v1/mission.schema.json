@@ -8,7 +8,7 @@
     "mission_id": {"type": "string", "minLength": 1},
     "objective": {"type": "string", "minLength": 1},
     "authority": {"const": "FOUNDER"},
-    "status": {"enum": ["QUEUED", "DISCOVERING", "PLANNING", "EXECUTING", "VERIFYING", "ADAPTING", "SUCCEEDED", "FAILED", "BLOCKED"]},
+    "status": {"enum": ["QUEUED", "DISCOVERING", "PLANNING", "EXECUTING", "VERIFYING", "ADAPTING", "SUCCEEDED", "FAILED", "BLOCKED", "CANCELLED"]},
     "acceptance_criteria": {"type": "object"},
     "context": {"type": "object"},
     "contract_version": {"const": "1.0"}
