@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "falcon://contracts/v1/control",
+  "title": "FALCON Control V1",
+  "type": "object",
+  "required": ["control_id", "operation", "target_id", "requested_by", "contract_version"],
+  "properties": {
+    "control_id": {"type": "string", "minLength": 1},
+    "operation": {"enum": ["CANCEL", "PAUSE", "RESUME"]},
+    "target_id": {"type": "string", "minLength": 1},
+    "requested_by": {"type": "string", "minLength": 1},
+    "reason": {"type": ["string", "null"]},
+    "contract_version": {"const": "1.0"}
+  },
+  "additionalProperties": false
+}
