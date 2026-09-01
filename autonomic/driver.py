@@ -1,10 +1,10 @@
 """Autonomic mission coordinator across replaceable Falcon organs."""
 from uuid import uuid4
 from contracts.models import Event,Mission
-from learning.evaluator import Evaluator
 class BrainDriver:
     def __init__(self,brain,executor,governance,runtime,memory=None,max_replans:int=3,control=None,evaluator=None):
-        self.brain=brain; self.executor=executor; self.governance=governance; self.runtime=runtime; self.memory=memory; self.max_replans=max_replans; self.control=control; self.evaluator=evaluator if evaluator is not None else Evaluator()
+        if evaluator is None: raise ValueError("evaluator_required")
+        self.brain=brain; self.executor=executor; self.governance=governance; self.runtime=runtime; self.memory=memory; self.max_replans=max_replans; self.control=control; self.evaluator=evaluator
     def _context(self,mission,supplied):
         context=dict(mission.context or {}); context.update(supplied or {})
         if self.memory is not None: context.update(self.memory.context_for(mission.objective))
@@ -26,9 +26,8 @@ class BrainDriver:
     def _verify(self,mission,evidence):
         observed={}
         for item in evidence:
-            if isinstance(item,dict): observed.update(item.get("data",{}) if isinstance(item.get("data"),dict) else {}); observed.update({k:v for k,v in item.items() if k not in {"data"}})
-        evaluation=self.evaluator.evaluate(mission.acceptance_criteria,observed)
-        execution_ok=bool(evidence) and all(bool(item.get("ok")) for item in evidence)
+            if isinstance(item,dict): observed.update(item.get("data",{}) if isinstance(item.get("data"),dict) else {}); observed.update({k:v for k,v in item.items() if k!="data"})
+        evaluation=self.evaluator.evaluate(mission.acceptance_criteria,observed); execution_ok=bool(evidence) and all(bool(item.get("ok")) for item in evidence)
         return execution_ok and evaluation.success,evaluation,observed
     def run(self,mission:Mission,context:dict|None=None)->Mission:
         working_context=self._context(mission,context); replans=0
