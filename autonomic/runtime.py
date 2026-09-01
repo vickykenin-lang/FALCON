@@ -19,10 +19,14 @@ class Runtime:
         self.bus.publish(e)
         return e
 
-    def accept(self, objective: str) -> Mission:
+    def accept(self, objective: str, source: str = "founder", source_id: str | None = None) -> Mission:
+        """Accept a mission from any authorized boundary without coupling to its implementation."""
         mission = Mission(objective=objective)
         mission.transition("DISCOVERING")
-        self.bus.publish(Event("REQUEST", "founder", {"objective": objective, "mission_id": mission.mission_id}, target="brain", correlation_id=mission.mission_id))
+        payload = {"objective": objective, "mission_id": mission.mission_id}
+        if source_id:
+            payload["source_id"] = source_id
+        self.bus.publish(Event("REQUEST", source, payload, target="brain", correlation_id=mission.mission_id))
         self.bus.publish(self.brain.understand(mission))
         self.checkpoint(mission)
         return mission
