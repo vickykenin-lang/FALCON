@@ -5,6 +5,7 @@ from nervous_system.bus import EventBus
 from memory.store import MemoryStore
 from autonomic.runtime import Runtime
 from scheduler.engine import Schedule, Scheduler
+from scheduler.bridge import SchedulerBridge
 
 class FalconV1Tests(unittest.TestCase):
     def test_event_bus(self):
@@ -71,5 +72,20 @@ class FalconV1Tests(unittest.TestCase):
             self.assertEqual(s.tick(start+timedelta(seconds=30)),[])
             s.resume(item.schedule_id, now=start+timedelta(seconds=30))
             self.assertTrue(s.schedules[item.schedule_id].enabled)
+
+    def test_due_schedule_starts_autonomic_mission(self):
+        with tempfile.TemporaryDirectory() as d:
+            start=datetime(2026,9,1,0,0,tzinfo=timezone.utc)
+            runtime=Runtime(state_dir=os.path.join(d,"runtime"))
+            bridge=SchedulerBridge(runtime)
+            scheduler=Scheduler(os.path.join(d,"schedules.json"), on_due=bridge.on_due)
+            item=scheduler.add(Schedule("scheduled objective","RECURRING","every:60"), now=start)
+            scheduler.tick(start+timedelta(seconds=60))
+            mission_id=bridge.started_missions[item.schedule_id]
+            mission=runtime.resume(mission_id)
+            self.assertEqual(mission.objective,"scheduled objective")
+            self.assertEqual(mission.status,"DISCOVERING")
+            scheduler_requests=[e for e in runtime.bus.history if e.source=="scheduler" and e.event_type=="REQUEST"]
+            self.assertGreaterEqual(len(scheduler_requests),2)
 
 if __name__=="__main__": unittest.main()
