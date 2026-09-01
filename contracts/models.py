@@ -5,7 +5,7 @@ from typing import Any, Optional
 from uuid import uuid4
 
 ALLOWED_TYPES = {"OBSERVATION","REQUEST","DECISION","ACTION","RESULT","FAILURE","ALERT","HEARTBEAT","MEMORY","LEARNING"}
-MISSION_STATES = {"QUEUED","DISCOVERING","PLANNING","EXECUTING","VERIFYING","ADAPTING","SUCCEEDED","FAILED","BLOCKED"}
+MISSION_STATES = {"QUEUED","DISCOVERING","PLANNING","EXECUTING","VERIFYING","ADAPTING","SUCCEEDED","FAILED","BLOCKED","CANCELLED"}
 
 @dataclass(frozen=True)
 class Event:
@@ -19,13 +19,9 @@ class Event:
     contract_version: str = "1.0"
 
     def __post_init__(self):
-        if self.event_type not in ALLOWED_TYPES:
-            raise ValueError(f"Unsupported event_type: {self.event_type}")
-        if not self.source:
-            raise ValueError("source is required")
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        if self.event_type not in ALLOWED_TYPES: raise ValueError(f"Unsupported event_type: {self.event_type}")
+        if not self.source: raise ValueError("source is required")
+    def to_dict(self) -> dict[str, Any]: return asdict(self)
 
 @dataclass
 class Mission:
@@ -36,8 +32,6 @@ class Mission:
     checkpoint: dict[str, Any] = field(default_factory=dict)
     acceptance_criteria: dict[str, Any] = field(default_factory=dict)
     context: dict[str, Any] = field(default_factory=dict)
-
-    def transition(self, state: str) -> None:
-        if state not in MISSION_STATES:
-            raise ValueError(f"Unsupported mission state: {state}")
-        self.status = state
+    def transition(self,state:str)->None:
+        if state not in MISSION_STATES: raise ValueError(f"Unsupported mission state: {state}")
+        self.status=state
