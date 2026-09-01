@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "falcon://contracts/v1/artifact",
+  "title": "FALCON Artifact Reference V1",
+  "type": "object",
+  "required": ["artifact_id", "owner_module", "uri", "media_type", "contract_version"],
+  "properties": {
+    "artifact_id": {"type": "string", "minLength": 1},
+    "owner_module": {"type": "string", "minLength": 1},
+    "uri": {"type": "string", "minLength": 1},
+    "media_type": {"type": "string", "minLength": 1},
+    "sha256": {"type": ["string", "null"]},
+    "size_bytes": {"type": ["integer", "null"], "minimum": 0},
+    "contract_version": {"const": "1.0"}
+  },
+  "additionalProperties": false
+}
