@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "falcon://contracts/v1/trace",
+  "title": "FALCON Trace Context V1",
+  "type": "object",
+  "required": ["trace_id", "span_id", "component", "contract_version"],
+  "properties": {
+    "trace_id": {"type": "string", "minLength": 1},
+    "span_id": {"type": "string", "minLength": 1},
+    "parent_span_id": {"type": ["string", "null"]},
+    "component": {"type": "string", "minLength": 1},
+    "operation": {"type": ["string", "null"]},
+    "contract_version": {"const": "1.0"}
+  },
+  "additionalProperties": false
+}
