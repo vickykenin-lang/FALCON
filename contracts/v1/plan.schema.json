@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "falcon://contracts/v1/plan",
+  "title": "FALCON Plan V1",
+  "type": "object",
+  "required": ["summary", "actions", "success_criteria", "contract_version"],
+  "properties": {
+    "summary": {"type": "string", "minLength": 1},
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["adapter", "operation"],
+        "properties": {
+          "adapter": {"type": "string", "minLength": 1},
+          "operation": {"type": "string", "minLength": 1},
+          "args": {"type": "object"},
+          "risk": {"enum": ["low", "credential_required", "restricted"]}
+        },
+        "additionalProperties": false
+      }
+    },
+    "success_criteria": {"type": "array", "items": {"type": "string"}},
+    "needs_more_context": {"type": "boolean", "default": false},
+    "contract_version": {"const": "1.0"}
+  },
+  "additionalProperties": false
+}
