@@ -12,7 +12,6 @@ from scheduler.engine import Schedule, Scheduler
 from scheduler.bridge import SchedulerBridge
 from brain.engine import Brain
 from bootstrap import build_runtime
-
 CAP="test.execute"
 class FakeAdapter(ExecutionAdapter):
     name="fake"
@@ -25,8 +24,7 @@ class FakeAdapter(ExecutionAdapter):
 class SequenceProvider:
     def __init__(self): self.calls=0; self.contexts=[]
     def decide(self,objective,context):
-        self.calls+=1; self.contexts.append(dict(context))
-        return {"summary":"progress mission","actions":[{"adapter":"fake","operation":"do_work","capability":CAP,"args":{},"risk":"low"}],"success_criteria":["execution_result_ok"]}
+        self.calls+=1; self.contexts.append(dict(context)); return {"summary":"progress mission","actions":[{"adapter":"fake","operation":"do_work","capability":CAP,"args":{},"risk":"low"}],"success_criteria":["execution_result_ok"]}
 class FalconV1Tests(unittest.TestCase):
     def runtime(self,d,brain=None,memory=None,bus=None): return build_runtime(d,brain=brain,memory=memory,bus=bus)
     def governance(self): return Governance({CAP})
@@ -57,5 +55,5 @@ class FalconV1Tests(unittest.TestCase):
             path=os.path.join(d,"s.json"); start=datetime(2026,9,1,tzinfo=timezone.utc); s=Scheduler(path); item=s.add(Schedule("check","RECURRING","every:60"),now=start); self.assertEqual(len(s.tick(start+timedelta(seconds=60))),1); self.assertIn(item.schedule_id,Scheduler(path).schedules)
     def test_due_schedule_starts_autonomic_mission(self):
         with tempfile.TemporaryDirectory() as d:
-            start=datetime(2026,9,1,tzinfo=timezone.utc); runtime=self.runtime(os.path.join(d,"runtime")); bridge=SchedulerBridge(runtime); scheduler=Scheduler(os.path.join(d,"s.json"),on_due=bridge.on_due); item=scheduler.add(Schedule("scheduled objective","RECURRING","every:60"),now=start); scheduler.tick(start+timedelta(seconds=60)); self.assertEqual(runtime.resume(bridge.started_missions[item.schedule_id]).objective,"scheduled objective")
+            start=datetime(2026,9,1,tzinfo=timezone.utc); runtime=self.runtime(os.path.join(d,"runtime")); bridge=SchedulerBridge(runtime.bus.publish,runtime.accept); scheduler=Scheduler(os.path.join(d,"s.json"),on_due=bridge.on_due); item=scheduler.add(Schedule("scheduled objective","RECURRING","every:60"),now=start); scheduler.tick(start+timedelta(seconds=60)); self.assertEqual(runtime.resume(bridge.started_missions[item.schedule_id]).objective,"scheduled objective")
 if __name__=="__main__": unittest.main()
