@@ -20,7 +20,7 @@ class BrainDriver:
     def _execute(self,mission,action):
         operation_id=str(uuid4()); adapter=action.payload.get("adapter")
         if self.control is not None:self.control.begin_operation(mission.mission_id,adapter,operation_id)
-        try:return self.executor.execute(action)
+        try:return self.executor.execute(action,operation_id=operation_id)
         finally:
             if self.control is not None:self.control.end_operation(mission.mission_id,operation_id)
     def _verify(self,mission,evidence):
@@ -47,6 +47,7 @@ class BrainDriver:
                 allowed,reason=self.governance.authorize(action)
                 if not allowed:mission.transition("BLOCKED"); self.runtime.bus.publish(Event("ALERT","governance",{"mission_id":mission.mission_id,"reason":reason},target="interface",correlation_id=mission.mission_id)); self.runtime.checkpoint(mission); return mission
                 result=self._execute(mission,action); self.runtime.bus.publish(result); evidence.append(result.payload)
+                if not self._control_gate(mission):return mission
                 if not result.payload.get("ok"):break
             if mission.status=="EXECUTING":self.runtime.advance(mission)
             verified,evaluation,observed=self._verify(mission,evidence)
