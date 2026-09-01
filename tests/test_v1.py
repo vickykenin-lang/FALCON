@@ -4,13 +4,13 @@ from contracts.models import Event
 from nervous_system.bus import EventBus
 from memory.store import MemoryStore
 from autonomic.loop import AutonomousLoop
+from autonomic.driver import BrainDriver
 from execution.registry import Executor
 from execution.adapters.base import ExecutionAdapter
 from governance.policy import Governance
 from scheduler.engine import Schedule, Scheduler
 from scheduler.bridge import SchedulerBridge
 from brain.engine import Brain
-from brain.driver import BrainDriver
 from bootstrap import build_runtime
 
 CAP="test.execute"
