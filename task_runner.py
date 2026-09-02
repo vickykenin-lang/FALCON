@@ -14,6 +14,13 @@ def _load(path:str)->dict:
     if not isinstance(data,dict):raise ValueError("task_request_must_be_object")
     return data
 
+def _bounded_evidence(observed:dict)->dict:
+    evidence={k:v for k,v in observed.items() if k not in {"content","content_text"} and isinstance(v,(str,int,float,bool,type(None)))}
+    commit=observed.get("commit"); content=observed.get("content")
+    if isinstance(commit,dict) and commit.get("sha"): evidence["commit_sha"]=str(commit["sha"])
+    if isinstance(content,dict) and content.get("path"): evidence["path"]=str(content["path"])
+    return evidence
+
 def _summary(runtime,mission)->dict:
     events=runtime.memory.recent(250) if runtime.memory else []
     verification=None; reason=None; plan_summary=None; actions=[]; evidence={}
@@ -27,7 +34,7 @@ def _summary(runtime,mission)->dict:
         if event.get("event_type")=="RESULT" and event.get("source")=="autonomic_driver":
             verification={k:payload.get(k) for k in ("ok","execution_ok","evaluation_score","lesson")}
             observed=payload.get("observed")
-            if isinstance(observed,dict): evidence={k:v for k,v in observed.items() if k not in {"content","content_text"}}
+            if isinstance(observed,dict): evidence=_bounded_evidence(observed)
     return {"mission_id":mission.mission_id,"objective":mission.objective,"status":mission.status,"attempts":mission.attempts,"reason":reason,"plan_summary":plan_summary,"actions":actions,"evidence":evidence,"verification":verification,"event_types":[event.get("event_type") for event in events],"event_count":len(events)}
 
 def _profile_brain(profile:str,task:dict):
