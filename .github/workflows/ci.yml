@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  core:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,7 +19,32 @@ jobs:
           python-version: '3.12'
       - name: Compile
         run: python -m compileall -q .
-      - name: Unit tests
-        run: python -m unittest discover -s tests -p 'test_*.py' -v
       - name: Smoke test
         run: python falcon.py --self-test
+
+  tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        file:
+          - test_architecture.py
+          - test_artifacts.py
+          - test_autonomous_acceptance.py
+          - test_cli_service.py
+          - test_execution_cancellation.py
+          - test_intelligence_providers.py
+          - test_interface.py
+          - test_memory.py
+          - test_mission_control.py
+          - test_observability.py
+          - test_service.py
+          - test_v1.py
+          - test_verification.py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run ${{ matrix.file }}
+        run: python -m unittest discover -s tests -p '${{ matrix.file }}' -v
