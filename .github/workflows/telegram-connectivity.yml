@@ -50,6 +50,10 @@ jobs:
           print(f'unique_start_senders={len(start_senders)}')
 
           if start_senders and cfg.allowed_user_id not in start_senders:
+              if len(start_senders) == 1:
+                  actual_id = next(iter(start_senders))
+                  client.send_message(actual_id, f'FALCON SETUP: Your Telegram numeric User ID is {actual_id}. Update GitHub secret FALCON_TELEGRAM_ALLOWED_USER_ID to this exact number, then rerun verification.')
+                  print('founder_id_sent_privately=true')
               raise SystemExit('configured_founder_id_does_not_match_recent_start_sender')
 
           client.send_message(cfg.allowed_user_id, 'FALCON DIRECT: Telegram credentials verified. Founder channel reachable.')
