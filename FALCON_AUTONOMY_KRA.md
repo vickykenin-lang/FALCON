@@ -4,17 +4,22 @@ Status: **LOCKED AS PRODUCTION AUTONOMY SCORECARD**
 
 These KRAs are not optional features. They are the acceptance gates Falcon must pass before it is treated as a production autonomous operator for revenue-linked ownership.
 
-## KRA-1 — Real Execution / GitHub Write
+## KRA-1 — Real Execution / GitHub Write — PASS
 
 Target: Falcon can diagnose a repository issue, make the smallest safe code/config change, commit it, observe CI, diagnose failure, and repair the next blocker without hand-holding.
 
-Pass evidence:
-- authenticated governed `github.write` enabled only through explicit Founder-approved configuration;
-- create/update action succeeds against a controlled repository target;
-- resulting commit is verified;
-- CI result is observed;
-- at least one controlled failure is diagnosed and repaired automatically;
-- no unrelated files are modified.
+Fresh pass evidence — acceptance run `33658572003`:
+- governed `github.write` ran with explicit workflow-scoped `contents: write` and `actions: write` authority;
+- hard write scope `artifacts/kra1/` prevented unrelated-path writes;
+- Falcon created `artifacts/kra1/live-write-33658572003.txt` through `github.create_file`;
+- resulting commit `ded1f06db225f1f177ec7895e9ccfadf21c414b8` was captured and independently reread from GitHub;
+- Falcon dispatched `Falcon V1 CI` itself and observed run `33658584193` through `github.get_workflow_runs` until `completed/success`;
+- Falcon created controlled broken canary `artifacts/kra1/repair-33658572003.txt` and verified the failure `expected state=FIXED but observed state=BROKEN`;
+- live production intelligence selected `github.update_file_current` plus `github.get_file`, repaired only the controlled file, and returned `SUCCEEDED` with zero retries;
+- repair commit `c11c0f04eb7ddb9b665b07adfb88dbea07af856d` was produced and the final remote file was independently verified as exact `state=FIXED\n`;
+- acceptance workflow completed `success` with all write, CI observation, controlled-failure, autonomous-repair, and final verification steps passing.
+
+KRA-1 is therefore closed as **PASS**. Production write authority remains separately governed; passing this acceptance does not silently enable unrestricted GitHub writes.
 
 ## KRA-2 — Durable Memory
 
@@ -109,8 +114,8 @@ Revenue-linked success must be measured by business evidence such as qualified l
 
 ## Execution Priority
 
-1. KRA-1 Real Execution / GitHub Write
-2. KRA-2 Durable Memory
+1. KRA-1 Real Execution / GitHub Write — PASS
+2. KRA-2 Durable Memory — NEXT
 3. KRA-3 Autonomous Scheduler / Heartbeat
 4. KRA-4 Browser + MCP
 5. KRA-5 General Execution Adapter
