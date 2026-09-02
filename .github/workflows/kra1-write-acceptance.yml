@@ -18,6 +18,13 @@ jobs:
       PYTHONPATH: .
       FALCON_GITHUB_TOKEN: ${{ github.token }}
       FALCON_GITHUB_WRITE_ENABLED: 'true'
+      FALCON_GITHUB_WRITE_PATH_PREFIXES: 'artifacts/kra1/'
+      FALCON_INTELLIGENCE_MODE: auto
+      FALCON_DEEPSEEK_API_KEY: ${{ secrets.FALCON_DEEPSEEK_API_KEY }}
+      FALCON_GEMINI_API_KEY: ${{ secrets.FALCON_GEMINI_API_KEY }}
+      FALCON_DEEPSEEK_MODEL: deepseek-v4-pro
+      FALCON_GEMINI_MODEL: gemini-3.5-flash-lite
+      FALCON_INTELLIGENCE_TIMEOUT: '60'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -29,21 +36,9 @@ jobs:
           import json, os
           run_id=os.environ['GITHUB_RUN_ID']
           path=f"artifacts/kra1/live-write-{run_id}.txt"
-          task={
-              "enabled": True,
-              "profile": "github_write_acceptance",
-              "task_id": f"kra1-write-{run_id}",
-              "objective": "Prove governed Falcon GitHub write capability using an isolated canary file.",
-              "acceptance_criteria": {"ok": True},
-              "context": {
-                  "repository": "vickykenin-lang/FALCON",
-                  "path": path,
-                  "content": f"Falcon KRA-1 governed write acceptance. Workflow run: {run_id}\n",
-                  "message": f"Falcon KRA1 governed write canary {run_id}",
-              },
-          }
-          with open('kra1-task.json','w',encoding='utf-8') as f: json.dump(task,f)
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f"KRA1_CANARY_PATH={path}\n")
+          task={"enabled":True,"profile":"github_write_acceptance","task_id":f"kra1-write-{run_id}","objective":"Prove governed Falcon GitHub write capability using an isolated canary file.","acceptance_criteria":{"ok":True},"context":{"repository":"vickykenin-lang/FALCON","path":path,"content":f"Falcon KRA-1 governed write acceptance. Workflow run: {run_id}\n","message":f"Falcon KRA1 governed write canary {run_id}"}}
+          json.dump(task,open('kra1-task.json','w',encoding='utf-8'))
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:f.write(f"KRA1_CANARY_PATH={path}\n")
           PY
       - name: Execute write through Falcon governance and adapter
         run: python task_runner.py kra1-task.json --state-dir .falcon/kra1-write --output kra1-result.json
@@ -51,41 +46,24 @@ jobs:
         run: |
           python - <<'PY'
           import json, os
-          result=json.load(open('kra1-result.json',encoding='utf-8'))
-          assert result['status']=='SUCCEEDED', result
-          assert result['verification']['ok'] is True, result
-          assert 'github.create_file' in result['actions'], result
-          commit_sha=result.get('evidence',{}).get('commit_sha')
-          path=result.get('evidence',{}).get('path')
-          assert commit_sha, result
-          assert path==os.environ['KRA1_CANARY_PATH'], result
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f"KRA1_COMMIT_SHA={commit_sha}\n")
-          print('falcon_governed_write_succeeded=true')
-          print('falcon_write_commit_sha='+commit_sha)
+          result=json.load(open('kra1-result.json',encoding='utf-8')); assert result['status']=='SUCCEEDED',result; assert result['verification']['ok'] is True,result; assert 'github.create_file' in result['actions'],result
+          commit_sha=result.get('evidence',{}).get('commit_sha'); path=result.get('evidence',{}).get('path'); assert commit_sha,result; assert path==os.environ['KRA1_CANARY_PATH'],result
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:f.write(f"KRA1_COMMIT_SHA={commit_sha}\n")
+          print('falcon_governed_write_succeeded=true'); print('falcon_write_commit_sha='+commit_sha)
           PY
       - name: Verify committed canary from GitHub
         run: |
           python - <<'PY'
           import os
           from clients.github_http import GitHubHttpClient
-          client=GitHubHttpClient(token=os.environ['FALCON_GITHUB_TOKEN'])
-          data=client.get_file('vickykenin-lang/FALCON',os.environ['KRA1_CANARY_PATH'],ref='main')
-          assert data.get('path')==os.environ['KRA1_CANARY_PATH'], data
-          assert data.get('sha'), data
-          print('falcon_write_remote_file_verified=true')
+          data=GitHubHttpClient(token=os.environ['FALCON_GITHUB_TOKEN']).get_file('vickykenin-lang/FALCON',os.environ['KRA1_CANARY_PATH'],ref='main')
+          assert data.get('path')==os.environ['KRA1_CANARY_PATH'],data; assert data.get('sha'),data; print('falcon_write_remote_file_verified=true')
           PY
       - name: Prepare CI dispatch mission
         run: |
           python - <<'PY'
           import json, os
-          task={
-              "enabled": True,
-              "profile": "github_workflow_dispatch_acceptance",
-              "task_id": f"kra1-dispatch-{os.environ['GITHUB_RUN_ID']}",
-              "objective": "Dispatch Falcon CI to verify the governed write commit.",
-              "acceptance_criteria": {"ok": True},
-              "context": {"repository":"vickykenin-lang/FALCON","workflow":"ci.yml","ref":"main"},
-          }
+          task={"enabled":True,"profile":"github_workflow_dispatch_acceptance","task_id":f"kra1-dispatch-{os.environ['GITHUB_RUN_ID']}","objective":"Dispatch Falcon CI to verify the governed write commit.","acceptance_criteria":{"ok":True},"context":{"repository":"vickykenin-lang/FALCON","workflow":"ci.yml","ref":"main"}}
           json.dump(task,open('kra1-dispatch.json','w',encoding='utf-8'))
           PY
       - name: Dispatch CI through Falcon governance and adapter
@@ -96,27 +74,55 @@ jobs:
           import json, os, subprocess, time
           target=os.environ['KRA1_COMMIT_SHA']
           for attempt in range(40):
-              task={
-                  "enabled":True,
-                  "profile":"github_workflow_runs_acceptance",
-                  "task_id":f"kra1-observe-{os.environ['GITHUB_RUN_ID']}-{attempt}",
-                  "objective":"Observe Falcon CI result for the governed write commit.",
-                  "acceptance_criteria":{"ok":True},
-                  "context":{"repository":"vickykenin-lang/FALCON","per_page":30},
-              }
-              with open('kra1-observe.json','w',encoding='utf-8') as f: json.dump(task,f)
+              task={"enabled":True,"profile":"github_workflow_runs_acceptance","task_id":f"kra1-observe-{os.environ['GITHUB_RUN_ID']}-{attempt}","objective":"Observe Falcon CI result for the governed write commit.","acceptance_criteria":{"ok":True},"context":{"repository":"vickykenin-lang/FALCON","per_page":30}}
+              json.dump(task,open('kra1-observe.json','w',encoding='utf-8'))
               subprocess.run(['python','task_runner.py','kra1-observe.json','--state-dir',f'.falcon/kra1-observe-{attempt}','--output','kra1-observe-result.json'],check=True)
-              result=json.load(open('kra1-observe-result.json',encoding='utf-8'))
-              runs=result.get('evidence',{}).get('workflow_runs',[])
+              runs=json.load(open('kra1-observe-result.json',encoding='utf-8')).get('evidence',{}).get('workflow_runs',[])
               matches=[r for r in runs if r.get('name')=='Falcon V1 CI' and r.get('event')=='workflow_dispatch' and r.get('head_sha')==target]
               if matches:
-                  run=matches[0]
-                  print(f"falcon_ci_observed=true id={run.get('id')} status={run.get('status')} conclusion={run.get('conclusion')}")
+                  run=matches[0]; print(f"falcon_ci_observed=true id={run.get('id')} status={run.get('status')} conclusion={run.get('conclusion')}")
                   if run.get('status')=='completed':
-                      if run.get('conclusion')!='success': raise SystemExit(f"falcon_ci_failed:{run.get('id')}:{run.get('conclusion')}")
-                      print('falcon_ci_verified_success=true')
-                      break
+                      if run.get('conclusion')!='success':raise SystemExit(f"falcon_ci_failed:{run.get('id')}:{run.get('conclusion')}")
+                      print('falcon_ci_verified_success=true'); break
               time.sleep(3)
-          else:
-              raise SystemExit('falcon_ci_observation_timeout')
+          else:raise SystemExit('falcon_ci_observation_timeout')
+          PY
+      - name: Create controlled broken canary through Falcon
+        run: |
+          python - <<'PY'
+          import json, os
+          path=f"artifacts/kra1/repair-{os.environ['GITHUB_RUN_ID']}.txt"
+          task={"enabled":True,"profile":"github_write_acceptance","task_id":f"kra1-broken-{os.environ['GITHUB_RUN_ID']}","objective":"Create the controlled KRA1 broken canary.","acceptance_criteria":{"ok":True},"context":{"repository":"vickykenin-lang/FALCON","path":path,"content":"state=BROKEN\n","message":f"Falcon KRA1 controlled broken canary {os.environ['GITHUB_RUN_ID']}"}}
+          json.dump(task,open('kra1-broken.json','w',encoding='utf-8'))
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:f.write(f"KRA1_REPAIR_PATH={path}\n")
+          PY
+          python task_runner.py kra1-broken.json --state-dir .falcon/kra1-broken --output kra1-broken-result.json
+      - name: Observe controlled failure evidence
+        run: |
+          python - <<'PY'
+          import os
+          from clients.github_http import GitHubHttpClient
+          data=GitHubHttpClient(token=os.environ['FALCON_GITHUB_TOKEN']).get_file('vickykenin-lang/FALCON',os.environ['KRA1_REPAIR_PATH'],ref='main')
+          actual=data.get('content_text'); assert actual=='state=BROKEN\n',actual
+          print('controlled_failure_observed=true'); print('failure=expected state=FIXED but observed state=BROKEN')
+          PY
+      - name: Prepare autonomous repair mission
+        run: |
+          python - <<'PY'
+          import json, os
+          path=os.environ['KRA1_REPAIR_PATH']
+          task={"enabled":True,"task_id":f"kra1-repair-{os.environ['GITHUB_RUN_ID']}","objective":f"A controlled verification failed for {path}: expected exact content state=FIXED but observed state=BROKEN. Diagnose and repair the smallest safe change. First inspect the file to obtain its current SHA, update only this file, then reread it and verify exact content. Do not modify any other path.","acceptance_criteria":{"content_text":"state=FIXED\n"},"context":{"repository":"vickykenin-lang/FALCON","path":path,"branch":"main","write_scope":"artifacts/kra1/","failure_evidence":"expected state=FIXED but observed state=BROKEN","expected_content":"state=FIXED\n"}}
+          json.dump(task,open('kra1-repair.json','w',encoding='utf-8'))
+          PY
+      - name: Let live Falcon diagnose and repair automatically
+        run: python task_runner.py kra1-repair.json --state-dir .falcon/kra1-repair --output kra1-repair-result.json
+      - name: Verify autonomous repair outcome
+        run: |
+          python - <<'PY'
+          import json, os
+          from clients.github_http import GitHubHttpClient
+          result=json.load(open('kra1-repair-result.json',encoding='utf-8')); assert result['status']=='SUCCEEDED',result; assert result['verification']['ok'] is True,result
+          data=GitHubHttpClient(token=os.environ['FALCON_GITHUB_TOKEN']).get_file('vickykenin-lang/FALCON',os.environ['KRA1_REPAIR_PATH'],ref='main')
+          assert data.get('content_text')=='state=FIXED\n',data.get('content_text')
+          print('falcon_controlled_failure_repaired=true'); print('falcon_repair_attempts='+str(result.get('attempts'))); print('falcon_repair_actions='+','.join(result.get('actions') or []))
           PY
