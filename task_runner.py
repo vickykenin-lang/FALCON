@@ -32,19 +32,28 @@ def _summary(runtime,mission)->dict:
 
 def _profile_brain(profile:str,task:dict):
     if not profile:return None
+    context=task.get("context") or {}
     if profile=="deterministic_acceptance":return Brain(DeterministicProvider())
     if profile=="github_read_acceptance":
-        repository=str((task.get("context") or {}).get("repository","")).strip()
+        repository=str(context.get("repository","")).strip()
         if not repository:raise ValueError("github_read_acceptance_repository_required")
         return Brain(DeterministicProvider("github","get_repository","github.read",{"repository":repository}))
+    if profile=="github_workflow_runs_acceptance":
+        repository=str(context.get("repository","")).strip(); per_page=int(context.get("per_page",20))
+        if not repository:raise ValueError("github_workflow_runs_acceptance_repository_required")
+        return Brain(DeterministicProvider("github","get_workflow_runs","github.read",{"repository":repository,"per_page":per_page}))
     if profile=="github_write_acceptance":
-        context=task.get("context") or {}
         repository=str(context.get("repository","")).strip(); path=str(context.get("path","")).strip()
         content=str(context.get("content","")).strip(); message=str(context.get("message","Falcon KRA1 governed write acceptance")).strip()
         if not repository:raise ValueError("github_write_acceptance_repository_required")
         if not path.startswith("artifacts/kra1/") or path.endswith("/"):raise ValueError("github_write_acceptance_path_not_sandboxed")
         if not content:raise ValueError("github_write_acceptance_content_required")
         return Brain(DeterministicProvider("github","create_file","github.write",{"repository":repository,"path":path,"content":content,"message":message,"branch":"main"}))
+    if profile=="github_workflow_dispatch_acceptance":
+        repository=str(context.get("repository","")).strip(); workflow=str(context.get("workflow","")).strip(); ref=str(context.get("ref","main")).strip() or "main"
+        if not repository:raise ValueError("github_workflow_dispatch_acceptance_repository_required")
+        if not workflow:raise ValueError("github_workflow_dispatch_acceptance_workflow_required")
+        return Brain(DeterministicProvider("github","dispatch_workflow","github.write",{"repository":repository,"workflow":workflow,"ref":ref,"inputs":context.get("inputs") or {}}))
     raise ValueError(f"unsupported_task_profile:{profile}")
 
 def main()->int:
