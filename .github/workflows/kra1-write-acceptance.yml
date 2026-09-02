@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   governed-write:
@@ -31,7 +32,7 @@ jobs:
           task={
               "enabled": True,
               "profile": "github_write_acceptance",
-              "task_id": f"kra1-{run_id}",
+              "task_id": f"kra1-write-{run_id}",
               "objective": "Prove governed Falcon GitHub write capability using an isolated canary file.",
               "acceptance_criteria": {"ok": True},
               "context": {
@@ -45,16 +46,22 @@ jobs:
           with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f"KRA1_CANARY_PATH={path}\n")
           PY
       - name: Execute write through Falcon governance and adapter
-        run: python task_runner.py kra1-task.json --state-dir .falcon/kra1 --output kra1-result.json
-      - name: Verify bounded mission result
+        run: python task_runner.py kra1-task.json --state-dir .falcon/kra1-write --output kra1-result.json
+      - name: Capture and verify Falcon write commit
         run: |
           python - <<'PY'
-          import json
+          import json, os
           result=json.load(open('kra1-result.json',encoding='utf-8'))
           assert result['status']=='SUCCEEDED', result
           assert result['verification']['ok'] is True, result
           assert 'github.create_file' in result['actions'], result
+          commit_sha=result.get('evidence',{}).get('commit_sha')
+          path=result.get('evidence',{}).get('path')
+          assert commit_sha, result
+          assert path==os.environ['KRA1_CANARY_PATH'], result
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f"KRA1_COMMIT_SHA={commit_sha}\n")
           print('falcon_governed_write_succeeded=true')
+          print('falcon_write_commit_sha='+commit_sha)
           PY
       - name: Verify committed canary from GitHub
         run: |
@@ -65,7 +72,51 @@ jobs:
           data=client.get_file('vickykenin-lang/FALCON',os.environ['KRA1_CANARY_PATH'],ref='main')
           assert data.get('path')==os.environ['KRA1_CANARY_PATH'], data
           assert data.get('sha'), data
-          print('falcon_write_commit_verified=true')
-          print('canary_path='+data['path'])
-          print('canary_blob_sha='+data['sha'])
+          print('falcon_write_remote_file_verified=true')
+          PY
+      - name: Prepare CI dispatch mission
+        run: |
+          python - <<'PY'
+          import json, os
+          task={
+              "enabled": True,
+              "profile": "github_workflow_dispatch_acceptance",
+              "task_id": f"kra1-dispatch-{os.environ['GITHUB_RUN_ID']}",
+              "objective": "Dispatch Falcon CI to verify the governed write commit.",
+              "acceptance_criteria": {"ok": True},
+              "context": {"repository":"vickykenin-lang/FALCON","workflow":"ci.yml","ref":"main"},
+          }
+          json.dump(task,open('kra1-dispatch.json','w',encoding='utf-8'))
+          PY
+      - name: Dispatch CI through Falcon governance and adapter
+        run: python task_runner.py kra1-dispatch.json --state-dir .falcon/kra1-dispatch --output kra1-dispatch-result.json
+      - name: Observe CI through Falcon until terminal
+        run: |
+          python - <<'PY'
+          import json, os, subprocess, time
+          target=os.environ['KRA1_COMMIT_SHA']
+          for attempt in range(40):
+              task={
+                  "enabled":True,
+                  "profile":"github_workflow_runs_acceptance",
+                  "task_id":f"kra1-observe-{os.environ['GITHUB_RUN_ID']}-{attempt}",
+                  "objective":"Observe Falcon CI result for the governed write commit.",
+                  "acceptance_criteria":{"ok":True},
+                  "context":{"repository":"vickykenin-lang/FALCON","per_page":30},
+              }
+              with open('kra1-observe.json','w',encoding='utf-8') as f: json.dump(task,f)
+              subprocess.run(['python','task_runner.py','kra1-observe.json','--state-dir',f'.falcon/kra1-observe-{attempt}','--output','kra1-observe-result.json'],check=True)
+              result=json.load(open('kra1-observe-result.json',encoding='utf-8'))
+              runs=result.get('evidence',{}).get('workflow_runs',[])
+              matches=[r for r in runs if r.get('name')=='Falcon V1 CI' and r.get('event')=='workflow_dispatch' and r.get('head_sha')==target]
+              if matches:
+                  run=matches[0]
+                  print(f"falcon_ci_observed=true id={run.get('id')} status={run.get('status')} conclusion={run.get('conclusion')}")
+                  if run.get('status')=='completed':
+                      if run.get('conclusion')!='success': raise SystemExit(f"falcon_ci_failed:{run.get('id')}:{run.get('conclusion')}")
+                      print('falcon_ci_verified_success=true')
+                      break
+              time.sleep(3)
+          else:
+              raise SystemExit('falcon_ci_observation_timeout')
           PY
