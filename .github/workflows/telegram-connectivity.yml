@@ -1,0 +1,37 @@
+name: Falcon Telegram Connectivity
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/telegram-connectivity.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      FALCON_TELEGRAM_BOT_TOKEN: ${{ secrets.FALCON_TELEGRAM_BOT_TOKEN }}
+      FALCON_TELEGRAM_ALLOWED_USER_ID: ${{ secrets.FALCON_TELEGRAM_ALLOWED_USER_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify Telegram bot and Founder channel
+        run: |
+          python - <<'PY'
+          from interface.telegram import TelegramConfig, TelegramClient
+          cfg = TelegramConfig.from_env()
+          client = TelegramClient(cfg.bot_token)
+          me = client.get_me()
+          username = str(me.get('username') or '')
+          if username.lower() != 'falcon_optimus_bot':
+              raise SystemExit(f'unexpected_bot_username:{username}')
+          client.send_message(cfg.allowed_user_id, 'FALCON DIRECT: Telegram credentials verified. Founder channel reachable.')
+          print('telegram_bot_verified=true')
+          print('founder_channel_message_sent=true')
+          PY
