@@ -3,6 +3,7 @@ import os
 from autonomic.control import MissionControl
 from autonomic.driver import BrainDriver
 from autonomic.runtime import Runtime
+from autonomic.state import HttpMissionStateBackend, JsonMissionStateBackend
 from brain.engine import Brain
 from brain.providers.deepseek import DeepSeekProvider
 from brain.providers.deterministic import DeterministicProvider
@@ -16,6 +17,7 @@ from execution.adapters.noop import NoopAdapter
 from execution.registry import Executor
 from governance.policy import Governance
 from learning.evaluator import Evaluator
+from memory.http import HttpMemoryBackend
 from memory.store import MemoryStore
 from nervous_system.bus import EventBus
 
@@ -46,73 +48,72 @@ def build_brain_from_env(environ=None) -> Brain:
 
     def deepseek():
         if not deepseek_key: raise ValueError("falcon_deepseek_api_key_required")
-        return DeepSeekProvider(
-            deepseek_key,
-            model=str(env.get("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro")).strip(),
-            timeout=deepseek_timeout,
-            max_tokens=int(env.get("FALCON_DEEPSEEK_MAX_TOKENS", "8192")),
-        )
-
+        return DeepSeekProvider(deepseek_key,model=str(env.get("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro")).strip(),timeout=deepseek_timeout,max_tokens=int(env.get("FALCON_DEEPSEEK_MAX_TOKENS", "8192")))
     def gemini():
         if not gemini_key: raise ValueError("falcon_gemini_api_key_required")
-        return GeminiProvider(
-            gemini_key,
-            model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.5-flash-lite")).strip(),
-            timeout=gemini_timeout,
-            max_attempts=int(env.get("FALCON_GEMINI_MAX_ATTEMPTS", "2")),
-            retry_delay=float(env.get("FALCON_GEMINI_RETRY_DELAY", "1")),
-            max_output_tokens=int(env.get("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096")),
-        )
-
+        return GeminiProvider(gemini_key,model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.5-flash-lite")).strip(),timeout=gemini_timeout,max_attempts=int(env.get("FALCON_GEMINI_MAX_ATTEMPTS", "2")),retry_delay=float(env.get("FALCON_GEMINI_RETRY_DELAY", "1")),max_output_tokens=int(env.get("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096")))
     if mode in {"auto", "deepseek_gemini", "multi"}:
-        providers = []
-        if deepseek_key: providers.append(("deepseek", deepseek()))
-        if gemini_key: providers.append(("gemini", gemini()))
-        if not providers: raise ValueError("falcon_live_intelligence_key_required")
-        return Brain(providers[0][1] if len(providers) == 1 else FailoverProvider(providers))
-    if mode == "deepseek": return Brain(deepseek())
-    if mode == "gemini": return Brain(gemini())
-    if mode == "openai":
-        if not openai_key: raise ValueError("falcon_openai_api_key_required")
-        model = str(env.get("FALCON_OPENAI_MODEL", "gpt-5.6-sol")).strip()
-        return Brain(OpenAIResponsesProvider(openai_key, model=model, timeout=timeout))
-    if mode != "json_http": raise ValueError(f"unsupported_intelligence_mode:{mode}")
-    if not endpoint: raise ValueError("falcon_intelligence_endpoint_required")
-    headers = {}; token = str(env.get("FALCON_INTELLIGENCE_TOKEN", "")).strip()
-    if token: headers["Authorization"] = f"Bearer {token}"
-    return Brain(JsonHttpProvider(endpoint, headers=headers, timeout=timeout))
+        providers=[]
+        if deepseek_key:providers.append(("deepseek",deepseek()))
+        if gemini_key:providers.append(("gemini",gemini()))
+        if not providers:raise ValueError("falcon_live_intelligence_key_required")
+        return Brain(providers[0][1] if len(providers)==1 else FailoverProvider(providers))
+    if mode=="deepseek":return Brain(deepseek())
+    if mode=="gemini":return Brain(gemini())
+    if mode=="openai":
+        if not openai_key:raise ValueError("falcon_openai_api_key_required")
+        return Brain(OpenAIResponsesProvider(openai_key,model=str(env.get("FALCON_OPENAI_MODEL","gpt-5.6-sol")).strip(),timeout=timeout))
+    if mode!="json_http":raise ValueError(f"unsupported_intelligence_mode:{mode}")
+    if not endpoint:raise ValueError("falcon_intelligence_endpoint_required")
+    headers={}; token=str(env.get("FALCON_INTELLIGENCE_TOKEN","")).strip()
+    if token:headers["Authorization"]=f"Bearer {token}"
+    return Brain(JsonHttpProvider(endpoint,headers=headers,timeout=timeout))
 
 
 def build_executor_from_env(environ=None) -> Executor:
-    env = os.environ if environ is None else environ; executor = Executor(); executor.register(NoopAdapter())
-    token = str(env.get("FALCON_GITHUB_TOKEN", "")).strip() or None; timeout = float(env.get("FALCON_GITHUB_TIMEOUT", "30"))
+    env=os.environ if environ is None else environ; executor=Executor(); executor.register(NoopAdapter())
+    token=str(env.get("FALCON_GITHUB_TOKEN","")).strip() or None; timeout=float(env.get("FALCON_GITHUB_TIMEOUT","30"))
     prefixes=[x.strip() for x in str(env.get("FALCON_GITHUB_WRITE_PATH_PREFIXES","")).split(",") if x.strip()]
-    executor.register(GitHubAdapter(GitHubHttpClient(token=token, timeout=timeout),write_path_prefixes=prefixes))
-    return executor
+    executor.register(GitHubAdapter(GitHubHttpClient(token=token,timeout=timeout),write_path_prefixes=prefixes)); return executor
 
 
 def build_governance_from_env(environ=None) -> Governance:
-    env = os.environ if environ is None else environ; allowed = {"noop.inspect", "github.read"}
-    if _truthy(env.get("FALCON_GITHUB_WRITE_ENABLED")): allowed.add("github.write")
-    extra = str(env.get("FALCON_ALLOWED_CAPABILITIES", "")).strip()
-    if extra: allowed.update(x.strip() for x in extra.split(",") if x.strip())
+    env=os.environ if environ is None else environ; allowed={"noop.inspect","github.read"}
+    if _truthy(env.get("FALCON_GITHUB_WRITE_ENABLED")):allowed.add("github.write")
+    extra=str(env.get("FALCON_ALLOWED_CAPABILITIES","")).strip()
+    if extra:allowed.update(x.strip() for x in extra.split(",") if x.strip())
     return Governance(allowed)
 
 
-def build_runtime(state_dir: str = ".falcon", brain=None, memory=None, bus=None, control=None, executor=None, governance=None, evaluator=None) -> Runtime:
-    if bus is None: bus = EventBus()
-    if brain is None: brain = build_brain_from_env()
-    if memory is None: memory = MemoryStore(f"{state_dir}/memory.jsonl")
-    if executor is None: executor = build_executor_from_env()
-    if governance is None: governance = build_governance_from_env()
-    if evaluator is None: evaluator = Evaluator()
-    if control is None: control = MissionControl(cancel_operation=executor.cancel)
-    runtime = Runtime(bus=bus, brain=brain, memory=memory, state_dir=state_dir)
-    runtime.control = control; runtime.executor = executor; runtime.governance = governance; runtime.evaluator = evaluator
-    runtime.driver = BrainDriver(brain, executor, governance, runtime, memory=memory, control=control, evaluator=evaluator)
+def build_persistence_from_env(state_dir:str=".falcon",environ=None):
+    env=os.environ if environ is None else environ
+    endpoint=str(env.get("FALCON_STATE_ENDPOINT","")).strip(); token=str(env.get("FALCON_STATE_TOKEN","")).strip(); timeout=float(env.get("FALCON_STATE_TIMEOUT","20"))
+    if endpoint:
+        if not token:raise ValueError("falcon_state_token_required")
+        state_backend=HttpMissionStateBackend(endpoint,token,timeout=timeout)
+        memory=MemoryStore(backend=HttpMemoryBackend(endpoint,token,timeout=timeout))
+        return state_backend,memory
+    return JsonMissionStateBackend(f"{state_dir}/state"),MemoryStore(f"{state_dir}/memory.jsonl")
+
+
+def build_runtime(state_dir:str=".falcon",brain=None,memory=None,bus=None,control=None,executor=None,governance=None,evaluator=None,state_backend=None,environ=None)->Runtime:
+    env=os.environ if environ is None else environ
+    if bus is None:bus=EventBus()
+    if brain is None:brain=build_brain_from_env(env)
+    if state_backend is None or memory is None:
+        default_state,default_memory=build_persistence_from_env(state_dir,env)
+        if state_backend is None:state_backend=default_state
+        if memory is None:memory=default_memory
+    if executor is None:executor=build_executor_from_env(env)
+    if governance is None:governance=build_governance_from_env(env)
+    if evaluator is None:evaluator=Evaluator()
+    if control is None:control=MissionControl(cancel_operation=executor.cancel)
+    runtime=Runtime(bus=bus,brain=brain,memory=memory,state_dir=state_dir,state_backend=state_backend)
+    runtime.control=control; runtime.executor=executor; runtime.governance=governance; runtime.evaluator=evaluator
+    runtime.driver=BrainDriver(brain,executor,governance,runtime,memory=memory,control=control,evaluator=evaluator)
     return runtime
 
 
-def run_mission(runtime: Runtime, objective: str, acceptance_criteria: dict | None = None, context: dict | None = None, source: str = "founder", source_id: str | None = None):
-    mission = runtime.accept(objective, source=source, source_id=source_id, acceptance_criteria=acceptance_criteria, context=context)
-    return runtime.driver.run(mission, context=context)
+def run_mission(runtime:Runtime,objective:str,acceptance_criteria:dict|None=None,context:dict|None=None,source:str="founder",source_id:str|None=None):
+    mission=runtime.accept(objective,source=source,source_id=source_id,acceptance_criteria=acceptance_criteria,context=context)
+    return runtime.driver.run(mission,context=context)
