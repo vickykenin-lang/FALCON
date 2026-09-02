@@ -1,11 +1,13 @@
 import tempfile
 import unittest
 from bootstrap import build_runtime,run_mission
+from brain.engine import Brain
+from brain.providers.deterministic import DeterministicProvider
 
 class AutonomousAcceptanceTests(unittest.TestCase):
     def test_founder_task_runs_end_to_end_without_manual_steps(self):
         with tempfile.TemporaryDirectory() as tmp:
-            runtime=build_runtime(tmp)
+            runtime=build_runtime(tmp,brain=Brain(DeterministicProvider()))
             mission=run_mission(runtime,"Inspect this test project and verify execution",acceptance_criteria={"execution_result_ok":True})
             self.assertEqual(mission.status,"SUCCEEDED")
             self.assertEqual(mission.attempts,0)
