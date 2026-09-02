@@ -44,6 +44,7 @@ class BrainDriver:
             if not actions:evidence.append({"ok":False,"error":"empty_plan"})
             for action in actions:
                 if not self._control_gate(mission):return mission
+                self.runtime.bus.publish(action)
                 allowed,reason=self.governance.authorize(action)
                 if not allowed:mission.transition("BLOCKED"); self.runtime.bus.publish(Event("ALERT","governance",{"mission_id":mission.mission_id,"reason":reason},target="interface",correlation_id=mission.mission_id)); self.runtime.checkpoint(mission); return mission
                 result=self._execute(mission,action); self.runtime.bus.publish(result); evidence.append(result.payload)
