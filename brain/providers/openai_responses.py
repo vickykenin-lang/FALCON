@@ -2,7 +2,7 @@
 
 This adapter is replaceable and keeps OpenAI-specific request/response handling
 outside Falcon's provider-neutral Brain contract. It uses structured JSON output
-so every model response must conform to Falcon's plan schema.
+and converts provider-specific action arguments back into Falcon's plan contract.
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from brain.providers.base import IntelligenceProvider
 
 
-_PLAN_SCHEMA = {
+_OPENAI_PLAN_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
@@ -27,10 +27,10 @@ _PLAN_SCHEMA = {
                     "adapter": {"type": "string"},
                     "operation": {"type": "string"},
                     "capability": {"type": "string"},
-                    "args": {"type": "object"},
+                    "args_json": {"type": "string"},
                     "risk": {"type": "string"},
                 },
-                "required": ["adapter", "operation", "capability", "args", "risk"],
+                "required": ["adapter", "operation", "capability", "args_json", "risk"],
             },
         },
         "success_criteria": {"type": "array", "items": {"type": "string"}},
@@ -70,6 +70,7 @@ class OpenAIResponsesProvider(IntelligenceProvider):
         return (
             "You are Falcon's planning intelligence. Return only a valid Falcon plan. "
             "Use only operations listed in context.execution_capabilities when present. "
+            "For each action, put the operation arguments as a JSON object encoded in args_json. "
             "Never invent credentials, permissions, tools, adapters, repository names, or evidence. "
             "If required operational context is unavailable, set needs_more_context=true and actions=[]. "
             "Prefer the smallest safe action sequence that can produce verifiable evidence. "
@@ -91,6 +92,24 @@ class OpenAIResponsesProvider(IntelligenceProvider):
                         return text
         raise RuntimeError("openai_response_missing_output_text")
 
+    @staticmethod
+    def _normalize_plan(plan: dict) -> dict:
+        normalized = dict(plan)
+        actions = []
+        for raw_action in plan.get("actions") or []:
+            action = dict(raw_action)
+            args_json = action.pop("args_json", "{}")
+            try:
+                args = json.loads(args_json)
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError("openai_action_args_invalid_json") from exc
+            if not isinstance(args, dict):
+                raise RuntimeError("openai_action_args_must_be_object")
+            action["args"] = args
+            actions.append(action)
+        normalized["actions"] = actions
+        return normalized
+
     def decide(self, objective: str, context: dict) -> dict:
         payload = {
             "model": self.model,
@@ -109,7 +128,7 @@ class OpenAIResponsesProvider(IntelligenceProvider):
                     "type": "json_schema",
                     "name": "falcon_plan",
                     "strict": True,
-                    "schema": _PLAN_SCHEMA,
+                    "schema": _OPENAI_PLAN_SCHEMA,
                 }
             },
         }
@@ -143,4 +162,4 @@ class OpenAIResponsesProvider(IntelligenceProvider):
             raise RuntimeError("openai_plan_invalid_json") from exc
         if not isinstance(plan, dict):
             raise RuntimeError("openai_plan_must_be_object")
-        return plan
+        return self._normalize_plan(plan)
