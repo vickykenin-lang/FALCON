@@ -1,0 +1,71 @@
+name: Falcon KRA1 GitHub Write Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/kra1-write-acceptance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  governed-write:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      FALCON_GITHUB_TOKEN: ${{ secrets.FALCON_GITHUB_TOKEN }}
+      FALCON_GITHUB_WRITE_ENABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare sandboxed Falcon write mission
+        run: |
+          python - <<'PY'
+          import json, os
+          run_id=os.environ['GITHUB_RUN_ID']
+          path=f"artifacts/kra1/live-write-{run_id}.txt"
+          task={
+              "enabled": True,
+              "profile": "github_write_acceptance",
+              "task_id": f"kra1-{run_id}",
+              "objective": "Prove governed Falcon GitHub write capability using an isolated canary file.",
+              "acceptance_criteria": {"ok": True},
+              "context": {
+                  "repository": "vickykenin-lang/FALCON",
+                  "path": path,
+                  "content": f"Falcon KRA-1 governed write acceptance. Workflow run: {run_id}\n",
+                  "message": f"Falcon KRA1 governed write canary {run_id}",
+              },
+          }
+          with open('kra1-task.json','w',encoding='utf-8') as f: json.dump(task,f)
+          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f: f.write(f"KRA1_CANARY_PATH={path}\n")
+          PY
+      - name: Execute write through Falcon governance and adapter
+        run: python task_runner.py kra1-task.json --state-dir .falcon/kra1 --output kra1-result.json
+      - name: Verify bounded mission result
+        run: |
+          python - <<'PY'
+          import json
+          result=json.load(open('kra1-result.json',encoding='utf-8'))
+          assert result['status']=='SUCCEEDED', result
+          assert result['verification']['ok'] is True, result
+          assert 'github.create_file' in result['actions'], result
+          print('falcon_governed_write_succeeded=true')
+          PY
+      - name: Verify committed canary from GitHub
+        run: |
+          python - <<'PY'
+          import os
+          from clients.github_http import GitHubHttpClient
+          client=GitHubHttpClient(token=os.environ['FALCON_GITHUB_TOKEN'])
+          data=client.get_file('vickykenin-lang/FALCON',os.environ['KRA1_CANARY_PATH'],ref='main')
+          assert data.get('path')==os.environ['KRA1_CANARY_PATH'], data
+          assert data.get('sha'), data
+          print('falcon_write_commit_verified=true')
+          print('canary_path='+data['path'])
+          print('canary_blob_sha='+data['sha'])
+          PY
