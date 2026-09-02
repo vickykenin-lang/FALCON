@@ -55,6 +55,24 @@ class GitHubHttpClient:
         if branch:payload["branch"]=branch
         clean=quote(str(path).lstrip("/"),safe="/")
         return self._request("PUT",f"/repos/{self._repo(repository)}/contents/{clean}",payload)
+    def update_file_current(self,repository:str,path:str,content:str,message:str,branch:str="main",max_conflict_retries:int=1):
+        """Resolve the file's current blob SHA immediately before update and retry one conflict safely."""
+        self._require_write()
+        attempts=max(0,int(max_conflict_retries))+1
+        last_error=None
+        for _ in range(attempts):
+            current=self.get_file(repository,path,ref=branch)
+            sha=str(current.get("sha","")).strip() if isinstance(current,dict) else ""
+            if not sha:raise RuntimeError("github_current_file_sha_missing")
+            try:
+                result=self.update_file(repository,path,content,message,sha,branch=branch)
+                if isinstance(result,dict):
+                    result=dict(result); result["resolved_sha"]=sha
+                return result
+            except RuntimeError as exc:
+                last_error=exc
+                if str(exc)!="github_http_error:409":raise
+        raise last_error or RuntimeError("github_update_conflict")
     def dispatch_workflow(self,repository:str,workflow:str,ref:str="main",inputs:dict|None=None):
         self._require_write()
         workflow_id=quote(str(workflow).strip(),safe="")
