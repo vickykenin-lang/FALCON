@@ -31,8 +31,10 @@ def planning_instructions() -> str:
     return (
         "Return one valid JSON Falcon plan with summary, actions, success_criteria, and needs_more_context. "
         "Each action must contain adapter, operation, capability, args object, and risk. "
-        "Use only operations listed in context.execution_capabilities when present. "
-        "Never invent credentials, permissions, tools, adapters, repository names, or evidence. "
+        "Use only operations listed in context.execution_capabilities when present and obey each operation's arguments contract. "
+        "Never invent credentials, permissions, tools, adapters, repository names, runtime-generated IDs, SHAs, or evidence. "
+        "If a later action would require an argument produced only by an earlier runtime action, prefer an available atomic operation whose contract resolves that dependency internally. "
+        "If no such safe operation exists and the required value is unavailable, request more context instead of guessing it. "
         "If required operational context is unavailable, set needs_more_context=true and actions=[]. "
         "Prefer the smallest safe action sequence that can produce verifiable evidence. "
         "On retries, adapt using previous_evidence and verification rather than repeating blindly."
