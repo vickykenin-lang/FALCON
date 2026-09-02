@@ -22,6 +22,14 @@ class TaskRunnerTests(unittest.TestCase):
         brain=task_runner._profile_brain("github_read_acceptance",{"context":{"repository":"owner/repo"}})
         event=brain.plan(Mission("inspect repository")); action=event.payload["plan"]["actions"][0]
         self.assertEqual(action["adapter"],"github"); self.assertEqual(action["operation"],"get_repository"); self.assertEqual(action["capability"],"github.read"); self.assertEqual(action["args"],{"repository":"owner/repo"})
+    def test_github_write_acceptance_profile_is_sandboxed_and_governed(self):
+        task={"context":{"repository":"owner/repo","path":"artifacts/kra1/canary.txt","content":"safe canary","message":"KRA1 test"}}
+        brain=task_runner._profile_brain("github_write_acceptance",task)
+        event=brain.plan(Mission("write canary")); action=event.payload["plan"]["actions"][0]
+        self.assertEqual(action["adapter"],"github"); self.assertEqual(action["operation"],"create_file"); self.assertEqual(action["capability"],"github.write")
+        self.assertEqual(action["args"]["path"],"artifacts/kra1/canary.txt")
+        with self.assertRaisesRegex(ValueError,"path_not_sandboxed"):
+            task_runner._profile_brain("github_write_acceptance",{"context":{"repository":"owner/repo","path":"README.md","content":"unsafe"}})
     def test_summary_surfaces_block_reason_plan_and_bounded_evidence(self):
         events=[
             {"event_type":"DECISION","source":"brain","payload":{"plan":{"summary":"Inspect the repository safely","actions":[{"adapter":"github","operation":"get_repository"}]}}},
