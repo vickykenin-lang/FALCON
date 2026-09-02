@@ -17,6 +17,9 @@ class ExecutionAdapter(ABC):
     @abstractmethod
     def available(self) -> bool:
         raise NotImplementedError
+    def required_capability(self,action:str)->str|None:
+        """Return the exact capability required for an adapter operation, when constrained."""
+        return None
     @abstractmethod
     def execute(self, action: str, *, execution_context: ExecutionContext | None = None, **kwargs: Any) -> Any:
         """Execute one adapter-owned action with an optional cancellable operation identity."""
