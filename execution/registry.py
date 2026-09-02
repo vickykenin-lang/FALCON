@@ -14,7 +14,7 @@ class Executor:
         catalog=[]
         for name,adapter in sorted(self.adapters.items()):
             for operation in adapter.operations():
-                catalog.append({"adapter":name,"operation":operation,"capability":adapter.required_capability(operation),"available":bool(adapter.available())})
+                catalog.append({"adapter":name,"operation":operation,"capability":adapter.required_capability(operation),"available":bool(adapter.available()),"arguments":adapter.operation_schema(operation)})
         return catalog
     def execute(self,action:Event,operation_id:str|None=None)->Event:
         name=action.payload.get("adapter"); adapter=self.adapters.get(name)
