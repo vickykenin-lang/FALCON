@@ -5,6 +5,13 @@
   "vars": {
     "FALCON_TELEGRAM_ALLOWED_USER_ID": "1311732972"
   },
+  "d1_databases": [
+    {
+      "binding": "FALCON_STATE_DB",
+      "database_name": "falcon-state",
+      "database_id": "e3f7afa9-b120-4431-9945-1a60edd781a3"
+    }
+  ],
   "queues": {
     "producers": [
       {
