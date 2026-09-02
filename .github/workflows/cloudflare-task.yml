@@ -31,6 +31,7 @@ jobs:
   execute:
     runs-on: ubuntu-latest
     env:
+      PYTHONPATH: .
       FALCON_INTELLIGENCE_MODE: auto
       FALCON_DEEPSEEK_API_KEY: ${{ secrets.FALCON_DEEPSEEK_API_KEY }}
       FALCON_GEMINI_API_KEY: ${{ secrets.FALCON_GEMINI_API_KEY }}
