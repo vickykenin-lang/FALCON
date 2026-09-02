@@ -33,6 +33,7 @@ jobs:
           - test_autonomous_acceptance.py
           - test_cli_service.py
           - test_execution_cancellation.py
+          - test_github_capability.py
           - test_intelligence_providers.py
           - test_interface.py
           - test_memory.py
