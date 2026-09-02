@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 import task_runner
 from contracts.models import Mission
@@ -21,5 +22,18 @@ class TaskRunnerTests(unittest.TestCase):
         brain=task_runner._profile_brain("github_read_acceptance",{"context":{"repository":"owner/repo"}})
         event=brain.plan(Mission("inspect repository")); action=event.payload["plan"]["actions"][0]
         self.assertEqual(action["adapter"],"github"); self.assertEqual(action["operation"],"get_repository"); self.assertEqual(action["capability"],"github.read"); self.assertEqual(action["args"],{"repository":"owner/repo"})
+    def test_summary_surfaces_block_reason_plan_and_bounded_evidence(self):
+        events=[
+            {"event_type":"DECISION","source":"brain","payload":{"plan":{"summary":"Inspect the repository safely","actions":[{"adapter":"github","operation":"get_repository"}]}}},
+            {"event_type":"ALERT","source":"brain","payload":{"reason":"more_context_required"}},
+            {"event_type":"RESULT","source":"autonomic_driver","payload":{"ok":False,"execution_ok":False,"evaluation_score":0.0,"lesson":"blocked","observed":{"full_name":"owner/repo","nested":{"secret":"ignored"},"private":False}}},
+        ]
+        runtime=SimpleNamespace(memory=SimpleNamespace(recent=lambda limit:events))
+        mission=SimpleNamespace(mission_id="m1",objective="inspect",status="BLOCKED",attempts=0)
+        result=task_runner._summary(runtime,mission)
+        self.assertEqual(result["reason"],"more_context_required")
+        self.assertEqual(result["plan_summary"],"Inspect the repository safely")
+        self.assertEqual(result["actions"],["github.get_repository"])
+        self.assertEqual(result["evidence"],{"full_name":"owner/repo","private":False})
 
 if __name__=="__main__":unittest.main()
