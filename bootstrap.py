@@ -57,7 +57,7 @@ def build_brain_from_env(environ=None) -> Brain:
         if not gemini_key: raise ValueError("falcon_gemini_api_key_required")
         return GeminiProvider(
             gemini_key,
-            model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.7-flash")).strip(),
+            model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.5-flash-lite")).strip(),
             timeout=gemini_timeout,
             max_attempts=int(env.get("FALCON_GEMINI_MAX_ATTEMPTS", "2")),
             retry_delay=float(env.get("FALCON_GEMINI_RETRY_DELAY", "1")),
