@@ -37,6 +37,20 @@ class GitHubCapabilityTests(unittest.TestCase):
         action=Event("ACTION","brain",{"adapter":"github","operation":"update_file","capability":"github.read","args":{"repository":"owner/repo","path":"x","content":"x","message":"m","sha":"s"}})
         result=executor.execute(action)
         self.assertFalse(result.payload["ok"]); self.assertIn("capability_mismatch:github.write",result.payload["message"]); self.assertFalse(client.called)
+    def test_write_path_scope_blocks_unrelated_files(self):
+        class Client:
+            def create_file(self,**kwargs):return {"ok":True}
+        executor=Executor(); executor.register(GitHubAdapter(Client(),write_path_prefixes=["artifacts/kra1/"]))
+        safe=Event("ACTION","brain",{"adapter":"github","operation":"create_file","capability":"github.write","args":{"repository":"owner/repo","path":"artifacts/kra1/x.txt","content":"x","message":"m"}})
+        unsafe=Event("ACTION","brain",{"adapter":"github","operation":"create_file","capability":"github.write","args":{"repository":"owner/repo","path":"README.md","content":"x","message":"m"}})
+        self.assertTrue(executor.execute(safe).payload["ok"])
+        result=executor.execute(unsafe); self.assertFalse(result.payload["ok"]); self.assertIn("github_write_path_not_allowed",result.payload["message"])
+    def test_capability_catalog_exposes_argument_contracts(self):
+        executor=build_executor_from_env({"FALCON_GITHUB_WRITE_PATH_PREFIXES":"artifacts/kra1/"})
+        items={(x["adapter"],x["operation"]):x for x in executor.capability_catalog()}
+        self.assertIn("path",items[("github","update_file")]["arguments"]["required"])
+        self.assertIn("sha",items[("github","update_file")]["arguments"]["required"])
+        self.assertEqual(executor.adapters["github"].write_path_prefixes,("artifacts/kra1/",))
     def test_composition_allows_public_read_but_write_is_explicit(self):
         executor=build_executor_from_env({}); self.assertTrue(executor.available()["github"])
         self.assertIn("dispatch_workflow",executor.adapters["github"].operations())
