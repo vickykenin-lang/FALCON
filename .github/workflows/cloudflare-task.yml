@@ -1,0 +1,86 @@
+name: Falcon Cloudflare Task
+
+on:
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Telegram event kind
+        required: true
+        type: string
+      objective:
+        description: Founder mission text
+        required: true
+        type: string
+      chat_id:
+        description: Telegram chat id
+        required: true
+        type: string
+      update_id:
+        description: Telegram update id
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: falcon-telegram-${{ inputs.update_id }}
+  cancel-in-progress: false
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    env:
+      FALCON_INTELLIGENCE_MODE: auto
+      FALCON_DEEPSEEK_API_KEY: ${{ secrets.FALCON_DEEPSEEK_API_KEY }}
+      FALCON_GEMINI_API_KEY: ${{ secrets.FALCON_GEMINI_API_KEY }}
+      FALCON_DEEPSEEK_MODEL: deepseek-v4-pro
+      FALCON_GEMINI_MODEL: gemini-3.5-flash-lite
+      FALCON_INTELLIGENCE_TIMEOUT: '60'
+      FALCON_GITHUB_TOKEN: ${{ secrets.FALCON_GITHUB_TOKEN }}
+      FALCON_GITHUB_WRITE_ENABLED: ${{ vars.FALCON_GITHUB_WRITE_ENABLED }}
+      FALCON_ALLOWED_CAPABILITIES: ${{ vars.FALCON_ALLOWED_CAPABILITIES }}
+      FALCON_TELEGRAM_BOT_TOKEN: ${{ secrets.FALCON_TELEGRAM_BOT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare queued task
+        if: ${{ inputs.kind == 'mission' }}
+        env:
+          OBJECTIVE: ${{ inputs.objective }}
+          UPDATE_ID: ${{ inputs.update_id }}
+          CHAT_ID: ${{ inputs.chat_id }}
+        run: |
+          python - <<'PY'
+          import json, os
+          task = {
+              "enabled": True,
+              "task_id": f"telegram-{os.environ['UPDATE_ID']}",
+              "objective": os.environ["OBJECTIVE"],
+              "acceptance_criteria": {"execution_result_ok": True},
+              "context": {"channel": "telegram", "chat_id": os.environ["CHAT_ID"]},
+          }
+          with open("falcon-cloudflare-task.json", "w", encoding="utf-8") as f:
+              json.dump(task, f)
+          PY
+      - name: Execute Falcon mission
+        id: mission
+        if: ${{ inputs.kind == 'mission' }}
+        continue-on-error: true
+        run: python task_runner.py falcon-cloudflare-task.json --output falcon-cloudflare-result.json
+      - name: Reply to Founder on Telegram
+        if: always()
+        run: python scripts/send_telegram_result.py --chat-id "${{ inputs.chat_id }}" --kind "${{ inputs.kind }}" --result falcon-cloudflare-result.json
+      - name: Upload bounded result
+        if: ${{ always() && inputs.kind == 'mission' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: falcon-cloudflare-result-${{ inputs.update_id }}
+          path: falcon-cloudflare-result.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve mission failure status
+        if: ${{ inputs.kind == 'mission' && steps.mission.outcome != 'success' }}
+        run: exit 1
