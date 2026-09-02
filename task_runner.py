@@ -22,6 +22,15 @@ def _summary(runtime,mission)->dict:
             payload=event.get("payload",{}); verification={k:payload.get(k) for k in ("ok","execution_ok","evaluation_score","lesson")}; break
     return {"mission_id":mission.mission_id,"objective":mission.objective,"status":mission.status,"attempts":mission.attempts,"verification":verification,"event_types":[event.get("event_type") for event in events],"event_count":len(events)}
 
+def _profile_brain(profile:str,task:dict):
+    if not profile:return None
+    if profile=="deterministic_acceptance":return Brain(DeterministicProvider())
+    if profile=="github_read_acceptance":
+        repository=str((task.get("context") or {}).get("repository","")).strip()
+        if not repository:raise ValueError("github_read_acceptance_repository_required")
+        return Brain(DeterministicProvider("github","get_repository","github.read",{"repository":repository}))
+    raise ValueError(f"unsupported_task_profile:{profile}")
+
 def main()->int:
     parser=argparse.ArgumentParser(prog="falcon-task"); parser.add_argument("request"); parser.add_argument("--state-dir",default=".falcon/task-runtime"); parser.add_argument("--output",default="falcon-task-result.json"); args=parser.parse_args()
     task=_load(args.request)
@@ -29,9 +38,7 @@ def main()->int:
         result={"status":"SKIPPED","reason":"task_disabled"}; Path(args.output).write_text(json.dumps(result,indent=2),encoding="utf-8"); print(json.dumps(result)); return 0
     objective=str(task.get("objective","")).strip()
     if not objective:raise ValueError("task_objective_required")
-    profile=str(task.get("profile","")).strip().lower()
-    brain=Brain(DeterministicProvider()) if profile=="deterministic_acceptance" else None
-    if profile and profile!="deterministic_acceptance":raise ValueError(f"unsupported_task_profile:{profile}")
+    profile=str(task.get("profile","")).strip().lower(); brain=_profile_brain(profile,task)
     runtime=build_runtime(state_dir=args.state_dir,brain=brain)
     mission=run_mission(runtime,objective,acceptance_criteria=task.get("acceptance_criteria") or {},context=task.get("context") or {},source="founder",source_id=task.get("task_id"))
     result=_summary(runtime,mission); result["profile"]=profile or "production"; Path(args.output).write_text(json.dumps(result,indent=2),encoding="utf-8"); print(json.dumps(result))
