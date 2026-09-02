@@ -4,6 +4,8 @@ import argparse
 import json
 from pathlib import Path
 from bootstrap import build_runtime,run_mission
+from brain.engine import Brain
+from brain.providers.deterministic import DeterministicProvider
 
 TERMINAL={"SUCCEEDED","FAILED","BLOCKED","CANCELLED"}
 
@@ -27,9 +29,12 @@ def main()->int:
         result={"status":"SKIPPED","reason":"task_disabled"}; Path(args.output).write_text(json.dumps(result,indent=2),encoding="utf-8"); print(json.dumps(result)); return 0
     objective=str(task.get("objective","")).strip()
     if not objective:raise ValueError("task_objective_required")
-    runtime=build_runtime(state_dir=args.state_dir)
+    profile=str(task.get("profile","")).strip().lower()
+    brain=Brain(DeterministicProvider()) if profile=="deterministic_acceptance" else None
+    if profile and profile!="deterministic_acceptance":raise ValueError(f"unsupported_task_profile:{profile}")
+    runtime=build_runtime(state_dir=args.state_dir,brain=brain)
     mission=run_mission(runtime,objective,acceptance_criteria=task.get("acceptance_criteria") or {},context=task.get("context") or {},source="founder",source_id=task.get("task_id"))
-    result=_summary(runtime,mission); Path(args.output).write_text(json.dumps(result,indent=2),encoding="utf-8"); print(json.dumps(result))
+    result=_summary(runtime,mission); result["profile"]=profile or "production"; Path(args.output).write_text(json.dumps(result,indent=2),encoding="utf-8"); print(json.dumps(result))
     return 0 if mission.status=="SUCCEEDED" else 2
 
 if __name__=="__main__":raise SystemExit(main())
