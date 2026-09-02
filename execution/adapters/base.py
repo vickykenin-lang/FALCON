@@ -20,6 +20,9 @@ class ExecutionAdapter(ABC):
     def operations(self) -> tuple[str,...]:
         """Return the stable operation names exposed by this adapter."""
         return ()
+    def operation_schema(self,action:str)->dict:
+        """Return a bounded argument contract for an operation, when known."""
+        return {}
     def required_capability(self,action:str)->str|None:
         """Return the exact capability required for an adapter operation, when constrained."""
         return None
