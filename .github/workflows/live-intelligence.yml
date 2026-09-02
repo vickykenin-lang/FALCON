@@ -7,6 +7,9 @@ on:
     paths:
       - '.github/workflows/live-intelligence.yml'
       - 'scripts/verify_live_intelligence.py'
+      - 'brain/providers/**'
+      - 'brain/plan_contract.py'
+      - 'bootstrap.py'
 
 permissions:
   contents: read
