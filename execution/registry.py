@@ -17,6 +17,8 @@ class Executor:
         try:
             args:dict[str,Any]=action.payload.get("args",{}); operation=action.payload.get("operation") or action.payload.get("action")
             if not operation:raise ValueError("operation_required")
+            declared=action.payload.get("capability"); required=adapter.required_capability(operation)
+            if required and declared!=required:raise PermissionError(f"capability_mismatch:{required}")
             context=ExecutionContext(operation_id=operation_id,correlation_id=action.correlation_id) if operation_id else None
             data=adapter.execute(operation,execution_context=context,**args)
             return Event("RESULT","execution",{"ok":True,"adapter":name,"operation_id":operation_id,"data":data},correlation_id=action.correlation_id)
