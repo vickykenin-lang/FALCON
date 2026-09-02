@@ -3,6 +3,7 @@
 import argparse
 import json
 from bootstrap import build_runtime
+from interface.server import serve as serve_interface
 from scheduler.bridge import SchedulerBridge
 from scheduler.engine import Scheduler
 from service import FalconService,install_signal_handlers
@@ -28,7 +29,9 @@ def main() -> int:
     p.add_argument("--state-dir",default=".falcon",help="persistent Falcon state directory")
     p.add_argument("--tick-seconds",type=float,default=1.0,help="service scheduler tick interval")
     p.add_argument("--heartbeat-seconds",type=float,default=30.0,help="service heartbeat interval")
-    p.add_argument("command",nargs="?",choices=["health","mission","serve"])
+    p.add_argument("--host",default="0.0.0.0",help="live interface bind host")
+    p.add_argument("--port",type=int,default=8080,help="live interface port")
+    p.add_argument("command",nargs="?",choices=["health","mission","serve","dashboard"])
     p.add_argument("text",nargs="*")
     a=p.parse_args(); r=build_runtime(state_dir=a.state_dir)
     if a.self_test: return self_test(r)
@@ -36,8 +39,9 @@ def main() -> int:
     if a.command=="health": print(json.dumps(r.heartbeat().to_dict(),indent=2)); return 0
     if a.command=="serve":
         service=build_service(a.state_dir,a.tick_seconds,a.heartbeat_seconds)
-        install_signal_handlers(service)
-        service.run(); return 0
+        install_signal_handlers(service); service.run(); return 0
+    if a.command=="dashboard":
+        serve_interface(r,a.host,a.port); return 0
     if not a.text: p.error("mission requires an objective")
     m=r.accept(" ".join(a.text)); print(json.dumps(m.__dict__,indent=2)); return 0
 
