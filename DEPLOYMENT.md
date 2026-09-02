@@ -32,20 +32,19 @@ The Docker image starts the Telegram worker and stores checkpoints/memory under 
 
 The image healthcheck runs Falcon's `health` command. The CLI path is repository-tested and the Docker image is built in CI.
 
-Credentials must be supplied by the hosting platform's secret manager or process environment and must never be committed to this repository.
+Credentials must be supplied by the selected hosting platform's secret manager or process environment and must never be committed to this repository. GitHub Actions secrets used for CI/live provider acceptance do not automatically transfer to a production host.
 
-## Railway deployment profile
+## Host acceptance requirements
 
-Railway is a compatible persistent-host option for this worker, but it is not part of Falcon's architecture.
+Do not select or certify a host until its actual plan/account is verified for:
 
-1. Create a persistent service and connect `vickykenin-lang/FALCON` as its GitHub source. Railway should detect the root `Dockerfile` automatically.
-2. Attach a volume mounted at `/data/falcon`.
-3. Add the required runtime secrets and configuration variables listed above in the service Variables tab.
-4. Because Railway volumes are mounted as root while Falcon's Docker image normally runs as the non-root `falcon` user, set `RAILWAY_RUN_UID=0` for the Railway deployment so `/data/falcon` is writable. This is a Railway-specific runtime compatibility setting, not a Falcon architecture dependency.
-5. On a paid Railway plan, set Restart Policy to `Always` for the persistent Telegram worker. On plans where `Always` is unavailable, the platform's restart limits are weaker and should not be treated as production certification.
-6. Do not override the Docker start command unless necessary; the Dockerfile already starts `python falcon.py --state-dir "$FALCON_STATE_DIR" telegram`.
-
-GitHub Actions secrets used for CI/live provider acceptance do not automatically transfer to Railway or another host. Add host secrets independently through that platform's secret manager.
+1. Always-on background worker support.
+2. Container/Docker support.
+3. Persistent writable storage for `/data/falcon`.
+4. Secret/environment-variable injection.
+5. Automatic restart/recovery behavior.
+6. Outbound HTTPS access to Telegram, DeepSeek, Gemini, and GitHub.
+7. Acceptable quota and recurring cost for the Founder.
 
 ## Production acceptance
 
