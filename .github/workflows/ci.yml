@@ -40,6 +40,7 @@ jobs:
           - test_mission_control.py
           - test_observability.py
           - test_service.py
+          - test_task_runner.py
           - test_v1.py
           - test_verification.py
     steps:
