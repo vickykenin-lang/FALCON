@@ -4,6 +4,7 @@ from execution.adapters.base import ExecutionAdapter,ExecutionContext
 class NoopAdapter(ExecutionAdapter):
     name="noop"
     def available(self)->bool:return True
+    def operations(self)->tuple[str,...]:return ("inspect",)
     def required_capability(self,action:str)->str|None:
         return "noop.inspect" if action=="inspect" else None
     def execute(self,action:str,*,execution_context:ExecutionContext|None=None,**kwargs):
