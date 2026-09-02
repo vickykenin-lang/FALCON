@@ -18,6 +18,33 @@ def _load(path: str) -> dict:
         return {"status": "FAILED", "reason": "invalid_result"}
 
 
+def _clip(value, limit: int = 700) -> str:
+    text = str(value or "").strip()
+    return text if len(text) <= limit else text[: limit - 3] + "..."
+
+
+def _format_mission(result: dict) -> str:
+    status = str(result.get("status", "UNKNOWN"))
+    mission_id = str(result.get("mission_id", "unknown"))
+    attempts = int(result.get("attempts", 0) or 0)
+    lines = [f"FALCON mission {mission_id}", f"Status: {status}", f"Attempts: {attempts}"]
+    reason = _clip(result.get("reason"), 500)
+    if reason:
+        lines.append(f"Reason: {reason}")
+    summary = _clip(result.get("plan_summary"), 900)
+    if summary:
+        lines.append(f"Summary: {summary}")
+    actions = result.get("actions") or []
+    if isinstance(actions, list) and actions:
+        lines.append("Actions: " + ", ".join(_clip(item, 80) for item in actions[:6]))
+    evidence = result.get("evidence")
+    if isinstance(evidence, dict) and evidence:
+        parts = [f"{_clip(k, 50)}={_clip(v, 120)}" for k, v in list(evidence.items())[:6]]
+        lines.append("Evidence: " + "; ".join(parts))
+    text = "\n".join(lines)
+    return text if len(text) <= 3900 else text[:3897] + "..."
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--chat-id", required=True)
@@ -36,11 +63,7 @@ def main() -> int:
     elif kind == "help":
         text = "FALCON DIRECT connected via Cloudflare. Send a mission in plain language. /health checks gateway health."
     else:
-        result = _load(args.result)
-        status = str(result.get("status", "UNKNOWN"))
-        mission_id = str(result.get("mission_id", "unknown"))
-        attempts = int(result.get("attempts", 0) or 0)
-        text = f"FALCON mission {mission_id}\nStatus: {status}\nAttempts: {attempts}"
+        text = _format_mission(_load(args.result))
 
     TelegramClient(token).send_message(chat_id, text)
     print(json.dumps({"telegram_reply_sent": True, "kind": kind}))
