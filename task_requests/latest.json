@@ -1,7 +1,12 @@
 {
-  "enabled": false,
-  "task_id": "founder-task-template",
-  "objective": "",
-  "acceptance_criteria": {},
-  "context": {}
+  "enabled": true,
+  "profile": "deterministic_acceptance",
+  "task_id": "founder-live-acceptance-1",
+  "objective": "Inspect Falcon task channel and prove autonomous mission execution",
+  "acceptance_criteria": {
+    "execution_result_ok": true
+  },
+  "context": {
+    "test_scope": "safe_acceptance"
+  }
 }
