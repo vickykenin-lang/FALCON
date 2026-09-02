@@ -57,10 +57,10 @@ def _profile_brain(profile:str,task:dict):
         return Brain(DeterministicProvider("github","get_workflow_runs","github.read",{"repository":repository,"per_page":per_page}))
     if profile=="github_write_acceptance":
         repository=str(context.get("repository","")).strip(); path=str(context.get("path","")).strip()
-        content=str(context.get("content","")).strip(); message=str(context.get("message","Falcon KRA1 governed write acceptance")).strip()
+        raw_content=context.get("content",""); content=str(raw_content); message=str(context.get("message","Falcon KRA1 governed write acceptance")).strip()
         if not repository:raise ValueError("github_write_acceptance_repository_required")
         if not path.startswith("artifacts/kra1/") or path.endswith("/"):raise ValueError("github_write_acceptance_path_not_sandboxed")
-        if not content:raise ValueError("github_write_acceptance_content_required")
+        if not content.strip():raise ValueError("github_write_acceptance_content_required")
         return Brain(DeterministicProvider("github","create_file","github.write",{"repository":repository,"path":path,"content":content,"message":message,"branch":"main"}))
     if profile=="github_workflow_dispatch_acceptance":
         repository=str(context.get("repository","")).strip(); workflow=str(context.get("workflow","")).strip(); ref=str(context.get("ref","main")).strip() or "main"
