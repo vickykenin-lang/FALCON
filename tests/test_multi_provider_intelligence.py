@@ -31,17 +31,20 @@ class Provider:
 
 
 class MultiProviderIntelligenceTests(unittest.TestCase):
-    def test_deepseek_uses_json_mode_and_returns_plan(self):
+    def test_deepseek_uses_responses_json_schema_and_returns_plan(self):
         captured = {}
-        body = {"choices": [{"message": {"content": json.dumps(VALID_PLAN)}}]}
+        body = {"status": "completed", "output": [{"type": "message", "content": [{"type": "output_text", "text": json.dumps(VALID_PLAN)}]}]}
         def opener(request, timeout):
-            captured["body"] = json.loads(request.data); captured["headers"] = dict(request.header_items()); captured["timeout"] = timeout
+            captured["body"] = json.loads(request.data); captured["headers"] = dict(request.header_items()); captured["timeout"] = timeout; captured["url"] = request.full_url
             return Response(json.dumps(body).encode())
         provider = DeepSeekProvider("secret", model="deepseek-test", timeout=9, opener=opener)
         self.assertEqual(provider.decide("inspect", {"execution_capabilities": []}), VALID_PLAN)
         self.assertEqual(captured["body"]["model"], "deepseek-test")
-        self.assertEqual(captured["body"]["response_format"], {"type": "json_object"})
-        self.assertEqual(captured["body"]["thinking"], {"type": "disabled"})
+        self.assertEqual(captured["body"]["reasoning"], {"effort": "none"})
+        self.assertEqual(captured["body"]["text"]["format"]["type"], "json_schema")
+        self.assertEqual(captured["body"]["text"]["format"]["name"], "falcon_plan")
+        self.assertEqual(captured["body"]["text"]["format"]["schema"]["type"], "object")
+        self.assertTrue(captured["url"].endswith("/responses"))
         self.assertEqual(captured["timeout"], 9)
         self.assertTrue(any(k.lower() == "authorization" and v == "Bearer secret" for k, v in captured["headers"].items()))
 
