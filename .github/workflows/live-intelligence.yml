@@ -25,6 +25,8 @@ jobs:
       FALCON_DEEPSEEK_MODEL: deepseek-v4-pro
       FALCON_GEMINI_MODEL: gemini-3.7-flash
       FALCON_INTELLIGENCE_TIMEOUT: '60'
+      FALCON_GEMINI_MAX_ATTEMPTS: '2'
+      FALCON_GEMINI_RETRY_DELAY: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
