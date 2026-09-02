@@ -31,7 +31,27 @@ jobs:
           username = str(me.get('username') or '')
           if username.lower() != 'falcon_optimus_bot':
               raise SystemExit(f'unexpected_bot_username:{username}')
-          client.send_message(cfg.allowed_user_id, 'FALCON DIRECT: Telegram credentials verified. Founder channel reachable.')
+
+          updates = client.get_updates(timeout=0)
+          private_senders = []
+          for update in updates:
+              message = update.get('message') or {}
+              sender = message.get('from') or {}
+              chat = message.get('chat') or {}
+              text = str(message.get('text') or '').strip()
+              if chat.get('type') == 'private' and isinstance(sender.get('id'), int):
+                  private_senders.append((sender['id'], text))
+
+          configured_seen = any(sender_id == cfg.allowed_user_id for sender_id, _ in private_senders)
+          start_senders = {sender_id for sender_id, text in private_senders if text.startswith('/start')}
           print('telegram_bot_verified=true')
+          print(f'private_updates_seen={len(private_senders)}')
+          print(f'configured_founder_seen={str(configured_seen).lower()}')
+          print(f'unique_start_senders={len(start_senders)}')
+
+          if start_senders and cfg.allowed_user_id not in start_senders:
+              raise SystemExit('configured_founder_id_does_not_match_recent_start_sender')
+
+          client.send_message(cfg.allowed_user_id, 'FALCON DIRECT: Telegram credentials verified. Founder channel reachable.')
           print('founder_channel_message_sent=true')
           PY
