@@ -8,6 +8,13 @@ class BrainDriver:
     def _context(self,mission,supplied):
         context=dict(mission.context or {}); context.update(supplied or {})
         if self.memory is not None: context.update(self.memory.context_for(mission.objective))
+        if hasattr(self.executor,"capability_catalog"):
+            allowed=getattr(self.governance,"allowed_capabilities",set())
+            catalog=[]
+            for item in self.executor.capability_catalog():
+                capability=item.get("capability")
+                if item.get("available") and (not capability or capability in allowed):catalog.append(item)
+            context["execution_capabilities"]=catalog
         return context
     def _control_gate(self,mission):
         if self.control is None:return True
