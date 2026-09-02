@@ -17,6 +17,9 @@ class ExecutionAdapter(ABC):
     @abstractmethod
     def available(self) -> bool:
         raise NotImplementedError
+    def operations(self) -> tuple[str,...]:
+        """Return the stable operation names exposed by this adapter."""
+        return ()
     def required_capability(self,action:str)->str|None:
         """Return the exact capability required for an adapter operation, when constrained."""
         return None
