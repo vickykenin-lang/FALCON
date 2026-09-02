@@ -1,0 +1,24 @@
+{
+  "name": "falcon-gateway",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-02",
+  "vars": {
+    "FALCON_TELEGRAM_ALLOWED_USER_ID": "1311732972"
+  },
+  "queues": {
+    "producers": [
+      {
+        "binding": "FALCON_TASKS",
+        "queue": "falcon-tasks"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "falcon-tasks",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 5
+      }
+    ]
+  }
+}
