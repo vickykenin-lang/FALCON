@@ -1,0 +1,109 @@
+name: Falcon KRA2 Durable Memory Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-before-restart:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      FALCON_STATE_ENDPOINT: https://falcon-gateway.vickykenin.workers.dev
+      FALCON_STATE_TOKEN: ${{ secrets.FALCON_STATE_TOKEN }}
+      FALCON_INTELLIGENCE_MODE: deterministic
+    outputs:
+      mission_id: ${{ steps.seed.outputs.mission_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - id: seed
+        name: Persist active mission, memory and completed operation
+        run: |
+          python - <<'PY'
+          import os
+          from bootstrap import build_runtime
+          from brain.engine import Brain
+          from brain.providers.deterministic import DeterministicProvider
+          from contracts.models import Event
+
+          objective="KRA2 durable restart recovery"
+          source_id=f"kra2-{os.environ['GITHUB_RUN_ID']}"
+          brain=Brain(DeterministicProvider(action_args={"objective":objective}))
+          runtime=build_runtime(brain=brain)
+          mission=runtime.accept(objective,source="kra2",source_id=source_id,acceptance_criteria={"execution_result_ok":True},context={"project":"FALCON","kra":"KRA-2"})
+          plan=brain.plan(mission,{})
+          runtime.advance(mission)
+          runtime.advance(mission)
+          assert mission.status=="EXECUTING",mission.status
+          action=brain.action_events(mission,plan)[0]
+          result=runtime.driver._execute(mission,action,0)
+          assert result.payload.get("ok") is True,result.payload
+          runtime.bus.publish(result)
+          runtime.bus.publish(Event("LEARNING","learning",{"objective":objective,"lesson":"durable lesson survives runner restart"},correlation_id=mission.mission_id))
+          with open(os.environ['GITHUB_OUTPUT'],'a',encoding='utf-8') as f:f.write(f"mission_id={mission.mission_id}\n")
+          print('kra2_active_mission_persisted=true')
+          print('kra2_operation_completed_before_restart=true')
+          print('kra2_memory_persisted=true')
+          print('kra2_simulated_process_exit_before_mission_checkpoint=true')
+          PY
+
+  recover-after-restart:
+    needs: seed-before-restart
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+      FALCON_STATE_ENDPOINT: https://falcon-gateway.vickykenin.workers.dev
+      FALCON_STATE_TOKEN: ${{ secrets.FALCON_STATE_TOKEN }}
+      FALCON_INTELLIGENCE_MODE: deterministic
+      EXPECTED_MISSION_ID: ${{ needs.seed-before-restart.outputs.mission_id }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Restore mission and prove duplicate execution is prevented
+        run: |
+          python - <<'PY'
+          import os
+          from bootstrap import build_runtime
+          from brain.engine import Brain
+          from brain.providers.deterministic import DeterministicProvider
+          from execution.adapters.noop import NoopAdapter
+          from execution.registry import Executor
+          from governance.policy import Governance
+
+          class ExplodingNoopAdapter(NoopAdapter):
+              def __init__(self):self.called=False
+              def execute(self,action,*,execution_context=None,**kwargs):
+                  self.called=True
+                  raise RuntimeError('duplicate_execution_reached_adapter')
+
+          objective="KRA2 durable restart recovery"
+          source_id=f"kra2-{os.environ['GITHUB_RUN_ID']}"
+          exploding=ExplodingNoopAdapter(); executor=Executor(); executor.register(exploding)
+          brain=Brain(DeterministicProvider(action_args={"objective":objective}))
+          runtime=build_runtime(brain=brain,executor=executor,governance=Governance({"noop.inspect"}))
+          restored=runtime.accept(objective,source="kra2",source_id=source_id,acceptance_criteria={"execution_result_ok":True},context={"project":"FALCON","kra":"KRA-2"})
+          assert restored.mission_id==os.environ['EXPECTED_MISSION_ID'],(restored.mission_id,os.environ['EXPECTED_MISSION_ID'])
+          assert restored.status=="EXECUTING",restored.status
+          memories=runtime.memory.context_for(objective)["relevant_memory"]
+          assert any(x.get('event_type')=='LEARNING' and x.get('payload',{}).get('lesson')=='durable lesson survives runner restart' for x in memories),memories
+          finished=runtime.driver.run(restored)
+          assert finished.status=="SUCCEEDED",finished.status
+          assert exploding.called is False,'duplicate executor call occurred'
+          recent=runtime.memory.recent(100)
+          assert any(x.get('source')=='execution_replay' and x.get('payload',{}).get('replayed') is True for x in recent),recent
+          requests=[x for x in recent if x.get('event_type')=='REQUEST' and x.get('payload',{}).get('source_id')==source_id]
+          assert len(requests)==1,len(requests)
+          print('kra2_same_mission_restored=true')
+          print('kra2_context_restored=true')
+          print('kra2_prior_lesson_restored=true')
+          print('kra2_duplicate_execution_prevented=true')
+          print('kra2_completed_operation_replayed=true')
+          print('kra2_final_status=SUCCEEDED')
+          PY
