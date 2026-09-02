@@ -1,0 +1,36 @@
+name: Falcon Founder Task
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - task_requests/latest.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  execute:
+    runs-on: ubuntu-latest
+    env:
+      FALCON_INTELLIGENCE_MODE: json_http
+      FALCON_INTELLIGENCE_ENDPOINT: ${{ secrets.FALCON_INTELLIGENCE_ENDPOINT }}
+      FALCON_INTELLIGENCE_TOKEN: ${{ secrets.FALCON_INTELLIGENCE_TOKEN }}
+      FALCON_GITHUB_TOKEN: ${{ secrets.FALCON_GITHUB_TOKEN }}
+      FALCON_GITHUB_WRITE_ENABLED: ${{ vars.FALCON_GITHUB_WRITE_ENABLED }}
+      FALCON_ALLOWED_CAPABILITIES: ${{ vars.FALCON_ALLOWED_CAPABILITIES }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute Founder task
+        run: python task_runner.py task_requests/latest.json --output falcon-task-result.json
+      - name: Upload verified task result
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: falcon-task-result
+          path: falcon-task-result.json
+          if-no-files-found: error
