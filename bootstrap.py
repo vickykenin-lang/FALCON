@@ -3,7 +3,6 @@ from autonomic.control import MissionControl
 from autonomic.driver import BrainDriver
 from autonomic.runtime import Runtime
 from brain.engine import Brain
-from brain.providers.deterministic import DeterministicProvider
 from execution.adapters.noop import NoopAdapter
 from execution.registry import Executor
 from governance.policy import Governance
@@ -13,7 +12,7 @@ from nervous_system.bus import EventBus
 
 def build_runtime(state_dir:str=".falcon",brain=None,memory=None,bus=None,control=None,executor=None,governance=None,evaluator=None)->Runtime:
     if bus is None:bus=EventBus()
-    if brain is None:brain=Brain(DeterministicProvider())
+    if brain is None:brain=Brain()
     if memory is None:memory=MemoryStore(f"{state_dir}/memory.jsonl")
     if executor is None:
         executor=Executor(); executor.register(NoopAdapter())
