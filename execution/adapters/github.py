@@ -8,7 +8,7 @@ from execution.adapters.base import ExecutionAdapter,ExecutionContext
 class GitHubAdapter(ExecutionAdapter):
     name="github"
     READ_OPERATIONS={"get_repository","get_file","list_tree","get_workflow_runs"}
-    WRITE_OPERATIONS={"create_file","update_file","dispatch_workflow"}
+    WRITE_OPERATIONS={"create_file","update_file","update_file_current","dispatch_workflow"}
     SCHEMAS={
         "get_repository":{"required":["repository"],"optional":[]},
         "get_file":{"required":["repository","path"],"optional":["ref","max_bytes"]},
@@ -16,6 +16,7 @@ class GitHubAdapter(ExecutionAdapter):
         "get_workflow_runs":{"required":["repository"],"optional":["per_page"]},
         "create_file":{"required":["repository","path","content","message"],"optional":["branch"]},
         "update_file":{"required":["repository","path","content","message","sha"],"optional":["branch"]},
+        "update_file_current":{"required":["repository","path","content","message"],"optional":["branch","max_conflict_retries"]},
         "dispatch_workflow":{"required":["repository","workflow"],"optional":["ref","inputs"]},
     }
     def __init__(self,client=None,write_path_prefixes=None):
@@ -28,7 +29,7 @@ class GitHubAdapter(ExecutionAdapter):
         if action in self.WRITE_OPERATIONS:return "github.write"
         return None
     def _enforce_write_scope(self,action:str,kwargs:dict)->None:
-        if action not in {"create_file","update_file"} or not self.write_path_prefixes:return
+        if action not in {"create_file","update_file","update_file_current"} or not self.write_path_prefixes:return
         path=str(kwargs.get("path","")).lstrip("/")
         if not path or not any(path.startswith(prefix) for prefix in self.write_path_prefixes):raise PermissionError("github_write_path_not_allowed")
     def execute(self,action:str,*,execution_context:ExecutionContext|None=None,**kwargs):
