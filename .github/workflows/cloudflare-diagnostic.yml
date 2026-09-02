@@ -28,7 +28,7 @@ jobs:
           import json, os, time
           from datetime import datetime, timezone
           from urllib.request import Request, urlopen
-          from urllib.parse import urlencode
+          from urllib.error import HTTPError
 
           worker = os.environ['WORKER_URL'].rstrip('/')
           token = os.environ.get('FALCON_TELEGRAM_BOT_TOKEN','')
@@ -41,12 +41,35 @@ jobs:
           evidence = {}
           started = datetime.now(timezone.utc)
 
-          # 1) Public Worker health.
-          with urlopen(Request(worker + '/health'), timeout=20) as r:
-              body = json.loads(r.read().decode())
-              evidence['worker_health_status'] = r.status
-              evidence['worker_health'] = body.get('status')
-          if evidence['worker_health_status'] != 200 or evidence['worker_health'] != 'HEALTHY':
+          # 1) Public Worker health, capture bounded 403 details if Cloudflare blocks before Worker code.
+          try:
+              with urlopen(Request(worker + '/health', headers={'User-Agent':'falcon-diagnostic'}), timeout=20) as r:
+                  raw = r.read().decode(errors='replace')
+                  evidence['worker_health_status'] = r.status
+                  evidence['worker_content_type'] = r.headers.get('content-type','')
+                  try:
+                      body = json.loads(raw)
+                  except Exception:
+                      body = {}
+                  evidence['worker_health'] = body.get('status')
+          except HTTPError as exc:
+              raw = exc.read().decode(errors='replace')
+              evidence['worker_health_status'] = exc.code
+              evidence['worker_content_type'] = exc.headers.get('content-type','')
+              evidence['worker_server'] = exc.headers.get('server','')
+              evidence['worker_location_present'] = bool(exc.headers.get('location'))
+              low = raw.lower()
+              evidence['looks_like_cloudflare_access'] = ('cloudflare access' in low or '/cdn-cgi/access/' in low or 'access denied' in low)
+              evidence['looks_like_challenge'] = ('just a moment' in low or 'challenge-platform' in low or 'cf-chl-' in low)
+              evidence['body_prefix'] = raw[:180].replace('\n',' ')
+              with open('cloudflare-diagnostic.json','w',encoding='utf-8') as f:
+                  json.dump(evidence, f, indent=2)
+              print(json.dumps(evidence))
+              raise SystemExit('worker_public_route_blocked')
+
+          if evidence.get('worker_health_status') != 200 or evidence.get('worker_health') != 'HEALTHY':
+              with open('cloudflare-diagnostic.json','w',encoding='utf-8') as f:
+                  json.dump(evidence, f, indent=2)
               raise SystemExit('worker_health_failed')
 
           # 2) Telegram webhook registration, sanitized.
@@ -56,7 +79,10 @@ jobs:
           evidence['telegram_webhook_matches'] = info.get('url') == expected
           evidence['telegram_pending_updates'] = info.get('pending_update_count', 0)
           evidence['telegram_last_error'] = bool(info.get('last_error_message'))
+          evidence['telegram_last_error_message'] = str(info.get('last_error_message') or '')[:160]
           if not evidence['telegram_webhook_matches']:
+              with open('cloudflare-diagnostic.json','w',encoding='utf-8') as f:
+                  json.dump(evidence, f, indent=2)
               raise SystemExit('telegram_webhook_url_mismatch')
 
           # 3) Authenticated synthetic Telegram update into the real Worker.
@@ -74,12 +100,15 @@ jobs:
           req = Request(worker + '/telegram/webhook', data=payload, method='POST', headers={
               'Content-Type': 'application/json',
               'X-Telegram-Bot-Api-Secret-Token': secret,
+              'User-Agent': 'falcon-diagnostic',
           })
           with urlopen(req, timeout=20) as r:
               accepted = json.loads(r.read().decode())
               evidence['synthetic_webhook_status'] = r.status
               evidence['synthetic_queued'] = bool(accepted.get('queued'))
           if evidence['synthetic_webhook_status'] != 200 or not evidence['synthetic_queued']:
+              with open('cloudflare-diagnostic.json','w',encoding='utf-8') as f:
+                  json.dump(evidence, f, indent=2)
               raise SystemExit('worker_webhook_queue_rejected')
 
           # 4) Allow Queue consumer time to dispatch GitHub Actions, then verify a new task run exists.
