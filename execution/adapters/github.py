@@ -8,7 +8,7 @@ from execution.adapters.base import ExecutionAdapter,ExecutionContext
 class GitHubAdapter(ExecutionAdapter):
     name="github"
     READ_OPERATIONS={"get_repository","get_file","list_tree","get_workflow_runs"}
-    WRITE_OPERATIONS={"create_file","update_file"}
+    WRITE_OPERATIONS={"create_file","update_file","dispatch_workflow"}
     def __init__(self,client=None): self.client=client
     def available(self)->bool:return self.client is not None
     def operations(self)->tuple[str,...]:return tuple(sorted(self.READ_OPERATIONS|self.WRITE_OPERATIONS))
