@@ -79,6 +79,17 @@ def _run_provider(name: str, provider) -> dict:
         return result
 
 
+def _gemini(gemini_key: str, model: str, timeout: float, attempts: int, retry_delay: float, max_output_tokens: int):
+    return GeminiProvider(
+        gemini_key,
+        model=model,
+        timeout=timeout,
+        max_attempts=attempts,
+        retry_delay=retry_delay,
+        max_output_tokens=max_output_tokens,
+    )
+
+
 def main() -> int:
     deepseek_key = os.getenv("FALCON_DEEPSEEK_API_KEY", "").strip()
     gemini_key = os.getenv("FALCON_GEMINI_API_KEY", "").strip()
@@ -92,21 +103,12 @@ def main() -> int:
     gemini_timeout = float(os.getenv("FALCON_GEMINI_TIMEOUT", str(timeout)))
     gemini_attempts = int(os.getenv("FALCON_GEMINI_MAX_ATTEMPTS", "2"))
     gemini_retry_delay = float(os.getenv("FALCON_GEMINI_RETRY_DELAY", "1"))
-    gemini_thinking_level = os.getenv("FALCON_GEMINI_THINKING_LEVEL", "low").strip().lower()
     gemini_max_output_tokens = int(os.getenv("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096"))
     deepseek_model = os.getenv("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro").strip()
     gemini_model = os.getenv("FALCON_GEMINI_MODEL", "gemini-3.7-flash").strip()
 
     deepseek = DeepSeekProvider(deepseek_key, model=deepseek_model, timeout=deepseek_timeout)
-    gemini = GeminiProvider(
-        gemini_key,
-        model=gemini_model,
-        timeout=gemini_timeout,
-        max_attempts=gemini_attempts,
-        retry_delay=gemini_retry_delay,
-        thinking_level=gemini_thinking_level,
-        max_output_tokens=gemini_max_output_tokens,
-    )
+    gemini = _gemini(gemini_key, gemini_model, gemini_timeout, gemini_attempts, gemini_retry_delay, gemini_max_output_tokens)
 
     evidence = {
         "contract_version": "1.0",
@@ -116,15 +118,7 @@ def main() -> int:
 
     failover = FailoverProvider([
         ("forced_primary_failure", ForcedFailureProvider()),
-        ("gemini", GeminiProvider(
-            gemini_key,
-            model=gemini_model,
-            timeout=gemini_timeout,
-            max_attempts=gemini_attempts,
-            retry_delay=gemini_retry_delay,
-            thinking_level=gemini_thinking_level,
-            max_output_tokens=gemini_max_output_tokens,
-        )),
+        ("gemini", _gemini(gemini_key, gemini_model, gemini_timeout, gemini_attempts, gemini_retry_delay, gemini_max_output_tokens)),
     ])
     fallback_result = _run_provider("controlled_failover", failover)
     fallback_result["selected_provider"] = failover.last_provider
