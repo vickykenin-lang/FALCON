@@ -92,6 +92,8 @@ def main() -> int:
     gemini_timeout = float(os.getenv("FALCON_GEMINI_TIMEOUT", str(timeout)))
     gemini_attempts = int(os.getenv("FALCON_GEMINI_MAX_ATTEMPTS", "2"))
     gemini_retry_delay = float(os.getenv("FALCON_GEMINI_RETRY_DELAY", "1"))
+    gemini_thinking_level = os.getenv("FALCON_GEMINI_THINKING_LEVEL", "low").strip().lower()
+    gemini_max_output_tokens = int(os.getenv("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096"))
     deepseek_model = os.getenv("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro").strip()
     gemini_model = os.getenv("FALCON_GEMINI_MODEL", "gemini-3.7-flash").strip()
 
@@ -102,6 +104,8 @@ def main() -> int:
         timeout=gemini_timeout,
         max_attempts=gemini_attempts,
         retry_delay=gemini_retry_delay,
+        thinking_level=gemini_thinking_level,
+        max_output_tokens=gemini_max_output_tokens,
     )
 
     evidence = {
@@ -118,6 +122,8 @@ def main() -> int:
             timeout=gemini_timeout,
             max_attempts=gemini_attempts,
             retry_delay=gemini_retry_delay,
+            thinking_level=gemini_thinking_level,
+            max_output_tokens=gemini_max_output_tokens,
         )),
     ])
     fallback_result = _run_provider("controlled_failover", failover)

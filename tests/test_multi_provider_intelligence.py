@@ -48,7 +48,7 @@ class MultiProviderIntelligenceTests(unittest.TestCase):
         self.assertEqual(captured["timeout"], 9)
         self.assertTrue(any(k.lower() == "authorization" and v == "Bearer secret" for k, v in captured["headers"].items()))
 
-    def test_gemini_uses_structured_json_schema_and_returns_plan(self):
+    def test_gemini_uses_structured_json_schema_low_thinking_and_returns_plan(self):
         captured = {}
         body = {"candidates": [{"content": {"parts": [{"text": json.dumps(VALID_PLAN)}]}}]}
         def opener(request, timeout):
@@ -60,6 +60,8 @@ class MultiProviderIntelligenceTests(unittest.TestCase):
         config = captured["body"]["generationConfig"]
         self.assertEqual(config["responseMimeType"], "application/json")
         self.assertEqual(config["responseJsonSchema"]["type"], "object")
+        self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "low"})
+        self.assertEqual(config["maxOutputTokens"], 4096)
         self.assertTrue(any(k.lower() == "x-goog-api-key" and v == "secret" for k, v in captured["headers"].items()))
 
     def test_gemini_retries_transient_timeout_then_succeeds(self):
@@ -90,17 +92,19 @@ class MultiProviderIntelligenceTests(unittest.TestCase):
         self.assertEqual(provider.last_provider, "gemini")
 
     def test_auto_composition_prefers_deepseek_and_configures_gemini_fallback(self):
-        brain = build_brain_from_env({"FALCON_DEEPSEEK_API_KEY": "d", "FALCON_GEMINI_API_KEY": "g", "FALCON_GEMINI_MAX_ATTEMPTS": "3"})
+        brain = build_brain_from_env({"FALCON_DEEPSEEK_API_KEY": "d", "FALCON_GEMINI_API_KEY": "g", "FALCON_GEMINI_MAX_ATTEMPTS": "3", "FALCON_GEMINI_THINKING_LEVEL": "medium"})
         self.assertIsInstance(brain.provider, FailoverProvider)
         self.assertEqual([name for name, _ in brain.provider.providers], ["deepseek", "gemini"])
         gemini = brain.provider.providers[1][1]
         self.assertEqual(gemini.max_attempts, 3)
+        self.assertEqual(gemini.thinking_level, "medium")
 
     def test_auto_composition_accepts_single_live_provider(self):
         deepseek_brain = build_brain_from_env({"FALCON_DEEPSEEK_API_KEY": "d"})
         gemini_brain = build_brain_from_env({"FALCON_GEMINI_API_KEY": "g"})
         self.assertIsInstance(deepseek_brain.provider, DeepSeekProvider)
         self.assertIsInstance(gemini_brain.provider, GeminiProvider)
+        self.assertEqual(gemini_brain.provider.thinking_level, "low")
 
     def test_brain_fails_closed_when_all_live_providers_fail(self):
         provider = FailoverProvider([("deepseek", Provider(error=RuntimeError("down"))), ("gemini", Provider(error=RuntimeError("down")))])

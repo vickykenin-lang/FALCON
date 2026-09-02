@@ -61,6 +61,8 @@ def build_brain_from_env(environ=None) -> Brain:
             timeout=gemini_timeout,
             max_attempts=int(env.get("FALCON_GEMINI_MAX_ATTEMPTS", "2")),
             retry_delay=float(env.get("FALCON_GEMINI_RETRY_DELAY", "1")),
+            thinking_level=str(env.get("FALCON_GEMINI_THINKING_LEVEL", "low")).strip().lower(),
+            max_output_tokens=int(env.get("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096")),
         )
 
     if mode in {"auto", "deepseek_gemini", "multi"}:
