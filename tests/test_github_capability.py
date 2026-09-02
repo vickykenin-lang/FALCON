@@ -22,6 +22,13 @@ class GitHubCapabilityTests(unittest.TestCase):
     def test_write_requires_injected_token(self):
         client=GitHubHttpClient(opener=lambda *_args,**_kwargs:Response(b"{}"))
         with self.assertRaisesRegex(PermissionError,"github_token_required_for_write"):client.create_file("owner/repo","x.txt","x","msg")
+    def test_workflow_dispatch_uses_authenticated_post(self):
+        seen={}
+        def opener(request,timeout):
+            seen["url"]=request.full_url; seen["method"]=request.get_method(); seen["body"]=json.loads(request.data.decode()); seen["auth"]=request.headers.get("Authorization"); return Response(b"")
+        client=GitHubHttpClient(token="secret",opener=opener)
+        self.assertEqual(client.dispatch_workflow("owner/repo","ci.yml",ref="main",inputs={"x":"1"}),{})
+        self.assertEqual(seen["method"],"POST"); self.assertIn("/actions/workflows/ci.yml/dispatches",seen["url"]); self.assertEqual(seen["body"],{"ref":"main","inputs":{"x":"1"}}); self.assertEqual(seen["auth"],"Bearer secret")
     def test_executor_blocks_capability_operation_mismatch(self):
         class Client:
             def __init__(self):self.called=False
@@ -32,8 +39,9 @@ class GitHubCapabilityTests(unittest.TestCase):
         self.assertFalse(result.payload["ok"]); self.assertIn("capability_mismatch:github.write",result.payload["message"]); self.assertFalse(client.called)
     def test_composition_allows_public_read_but_write_is_explicit(self):
         executor=build_executor_from_env({}); self.assertTrue(executor.available()["github"])
+        self.assertIn("dispatch_workflow",executor.adapters["github"].operations())
         self.assertEqual(build_governance_from_env({}).authorize(Event("ACTION","brain",{"adapter":"github","operation":"get_repository","capability":"github.read","args":{}}))[0],True)
-        self.assertEqual(build_governance_from_env({}).authorize(Event("ACTION","brain",{"adapter":"github","operation":"update_file","capability":"github.write","args":{}}))[0],False)
-        self.assertEqual(build_governance_from_env({"FALCON_GITHUB_WRITE_ENABLED":"true"}).authorize(Event("ACTION","brain",{"adapter":"github","operation":"update_file","capability":"github.write","args":{}}))[0],True)
+        self.assertEqual(build_governance_from_env({}).authorize(Event("ACTION","brain",{"adapter":"github","operation":"dispatch_workflow","capability":"github.write","args":{}}))[0],False)
+        self.assertEqual(build_governance_from_env({"FALCON_GITHUB_WRITE_ENABLED":"true"}).authorize(Event("ACTION","brain",{"adapter":"github","operation":"dispatch_workflow","capability":"github.write","args":{}}))[0],True)
 
 if __name__=="__main__":unittest.main()
