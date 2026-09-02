@@ -6,6 +6,7 @@ from autonomic.runtime import Runtime
 from brain.engine import Brain
 from brain.providers.deterministic import DeterministicProvider
 from brain.providers.json_http import JsonHttpProvider
+from brain.providers.openai_responses import OpenAIResponsesProvider
 from clients.github_http import GitHubHttpClient
 from execution.adapters.github import GitHubAdapter
 from execution.adapters.noop import NoopAdapter
@@ -21,13 +22,19 @@ def build_brain_from_env(environ=None)->Brain:
     env=os.environ if environ is None else environ
     mode=str(env.get("FALCON_INTELLIGENCE_MODE","")).strip().lower()
     endpoint=str(env.get("FALCON_INTELLIGENCE_ENDPOINT","")).strip()
+    openai_key=str(env.get("FALCON_OPENAI_API_KEY","")).strip() or str(env.get("OPENAI_API_KEY","")).strip()
+    if not mode and openai_key:mode="openai"
     if not mode and endpoint:mode="json_http"
     if not mode:return Brain()
     if mode=="deterministic":return Brain(DeterministicProvider())
+    timeout=float(env.get("FALCON_INTELLIGENCE_TIMEOUT","60"))
+    if mode=="openai":
+        if not openai_key:raise ValueError("falcon_openai_api_key_required")
+        model=str(env.get("FALCON_OPENAI_MODEL","gpt-5.6-sol")).strip()
+        return Brain(OpenAIResponsesProvider(openai_key,model=model,timeout=timeout))
     if mode!="json_http":raise ValueError(f"unsupported_intelligence_mode:{mode}")
     if not endpoint:raise ValueError("falcon_intelligence_endpoint_required")
-    timeout=float(env.get("FALCON_INTELLIGENCE_TIMEOUT","30")); headers={}
-    token=str(env.get("FALCON_INTELLIGENCE_TOKEN","")).strip()
+    headers={}; token=str(env.get("FALCON_INTELLIGENCE_TOKEN","")).strip()
     if token:headers["Authorization"]=f"Bearer {token}"
     return Brain(JsonHttpProvider(endpoint,headers=headers,timeout=timeout))
 
