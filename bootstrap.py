@@ -86,7 +86,8 @@ def build_brain_from_env(environ=None) -> Brain:
 def build_executor_from_env(environ=None) -> Executor:
     env = os.environ if environ is None else environ; executor = Executor(); executor.register(NoopAdapter())
     token = str(env.get("FALCON_GITHUB_TOKEN", "")).strip() or None; timeout = float(env.get("FALCON_GITHUB_TIMEOUT", "30"))
-    executor.register(GitHubAdapter(GitHubHttpClient(token=token, timeout=timeout)))
+    prefixes=[x.strip() for x in str(env.get("FALCON_GITHUB_WRITE_PATH_PREFIXES","")).split(",") if x.strip()]
+    executor.register(GitHubAdapter(GitHubHttpClient(token=token, timeout=timeout),write_path_prefixes=prefixes))
     return executor
 
 
