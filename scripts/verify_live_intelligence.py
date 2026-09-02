@@ -38,6 +38,20 @@ def _executor() -> Executor:
     return executor
 
 
+def _safe_brain_failure(runtime) -> dict | None:
+    if runtime.memory is None:
+        return None
+    for event in reversed(runtime.memory.recent(100)):
+        if event.get("event_type") == "FAILURE" and event.get("source") == "brain":
+            payload = event.get("payload") or {}
+            return {
+                "error": str(payload.get("error", ""))[:120],
+                "provider_error": str(payload.get("provider_error", ""))[:120],
+                "detail": str(payload.get("detail", ""))[:300],
+            }
+    return None
+
+
 def _run_provider(name: str, provider) -> dict:
     with tempfile.TemporaryDirectory() as state_dir:
         runtime = build_runtime(
@@ -59,6 +73,8 @@ def _run_provider(name: str, provider) -> dict:
             "succeeded": mission.status == "SUCCEEDED",
         }
         if not result["succeeded"]:
+            result["brain_failure"] = _safe_brain_failure(runtime)
+            print(json.dumps({"live_provider_failure": result}, sort_keys=True))
             raise RuntimeError(f"live_provider_acceptance_failed:{name}:{mission.status}")
         return result
 
