@@ -1,6 +1,6 @@
 # FALCON Part 4 — Live Product & Real-World Capability
 
-Status: **IN PROGRESS — LIVE INTELLIGENCE + CLOUDFLARE TELEGRAM PATH VERIFIED; AUTONOMY KRA GATES LOCKED**
+Status: **IN PROGRESS — LIVE INTELLIGENCE + CLOUDFLARE TELEGRAM PATH VERIFIED; KRA-1 PASS**
 
 Implemented and repository-tested:
 - Live HTTP runtime interface (`/health`, `/activity`, `/missions`)
@@ -13,7 +13,10 @@ Implemented and repository-tested:
 - Fail-closed Brain behavior when no provider is configured or all providers fail
 - Governed execution capability binding (`adapter operation -> required capability`)
 - Dependency-free GitHub HTTP client and GitHub execution adapter
-- Public GitHub read capability enabled by default; GitHub write remains explicit and credential-gated
+- Public GitHub read capability enabled by default; production GitHub write remains explicit and credential-gated
+- GitHub write path scoping for bounded write authority
+- Atomic `update_file_current` operation that resolves current GitHub SHA internally and safely retries a conflict
+- Falcon-controlled workflow dispatch and workflow-run observation
 - Persistent scheduler definitions and scheduled missions routed through the autonomous mission loop
 - Founder task inbox + GitHub Actions execution workflow + bounded result artifacts
 - Host-agnostic Docker image with persistent state volume path and healthcheck
@@ -31,14 +34,14 @@ Verified live evidence:
 - Live-intelligence acceptance reported `all_live_checks_passed=true`.
 - Production Docker image builds successfully in CI.
 - Cloudflare Telegram `/health` completed the live chain: Telegram webhook -> Cloudflare Worker -> Queue -> consumer -> GitHub workflow -> Telegram reply.
-- Falcon V1 CI passed on the current KRA-definition head lineage.
+- KRA-1 acceptance run `33658572003` completed `success`: Falcon performed a scoped GitHub write, captured commit `ded1f06db225f1f177ec7895e9ccfadf21c414b8`, dispatched and observed CI run `33658584193` to `completed/success`, detected a controlled failure, autonomously repaired it through `github.update_file_current`, reread the file, and verified exact final state with zero repair retries.
 
 ## Production Autonomy Completion Gates
 
 The canonical scorecard is `FALCON_AUTONOMY_KRA.md`. All seven KRAs are mandatory before Falcon is called fully production-autonomous:
 
-1. Real Execution / GitHub Write
-2. Durable Memory
+1. Real Execution / GitHub Write — **PASS**
+2. Durable Memory — **NEXT**
 3. Autonomous Scheduler / Heartbeat
 4. Browser + MCP Real-World Execution
 5. General Execution Adapter
@@ -48,7 +51,6 @@ The canonical scorecard is `FALCON_AUTONOMY_KRA.md`. All seven KRAs are mandator
 These are evidence gates, not feature-presence checks. Each must pass its defined live acceptance conditions.
 
 Still required before Part 4 can be called complete:
-- Pass KRA-1 governed real GitHub write + commit + CI + automatic repair acceptance
 - Pass KRA-2 durable state/restart recovery acceptance
 - Pass KRA-3 autonomous scheduler/heartbeat continuation acceptance
 - Pass KRA-4 Browser/MCP real-world adapter acceptance
