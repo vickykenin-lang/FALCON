@@ -1,0 +1,48 @@
+name: Configure Falcon Cloudflare Webhook
+
+on:
+  workflow_dispatch:
+    inputs:
+      worker_url:
+        description: Deployed Cloudflare Worker base URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    env:
+      FALCON_TELEGRAM_BOT_TOKEN: ${{ secrets.FALCON_TELEGRAM_BOT_TOKEN }}
+      FALCON_TELEGRAM_WEBHOOK_SECRET: ${{ secrets.FALCON_TELEGRAM_WEBHOOK_SECRET }}
+      WORKER_URL: ${{ inputs.worker_url }}
+    steps:
+      - name: Require secrets
+        shell: bash
+        run: |
+          test -n "$FALCON_TELEGRAM_BOT_TOKEN" || { echo "Missing FALCON_TELEGRAM_BOT_TOKEN"; exit 2; }
+          test -n "$FALCON_TELEGRAM_WEBHOOK_SECRET" || { echo "Missing FALCON_TELEGRAM_WEBHOOK_SECRET"; exit 2; }
+      - name: Configure Telegram webhook
+        run: |
+          python - <<'PY'
+          import json, os
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+          token = os.environ["FALCON_TELEGRAM_BOT_TOKEN"]
+          secret = os.environ["FALCON_TELEGRAM_WEBHOOK_SECRET"]
+          base = os.environ["WORKER_URL"].rstrip("/")
+          payload = urlencode({
+              "url": base + "/telegram/webhook",
+              "secret_token": secret,
+              "allowed_updates": json.dumps(["message"]),
+              "drop_pending_updates": "false",
+          }).encode()
+          req = Request(f"https://api.telegram.org/bot{token}/setWebhook", data=payload, method="POST")
+          with urlopen(req, timeout=30) as response:
+              body = json.loads(response.read().decode())
+          if not body.get("ok"):
+              raise RuntimeError("telegram_set_webhook_failed")
+          print(json.dumps({"webhook_configured": True, "worker_url": base}))
+          PY
