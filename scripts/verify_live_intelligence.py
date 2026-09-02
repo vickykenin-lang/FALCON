@@ -88,11 +88,21 @@ def main() -> int:
         raise RuntimeError("FALCON_GEMINI_API_KEY_required")
 
     timeout = float(os.getenv("FALCON_INTELLIGENCE_TIMEOUT", "60"))
+    deepseek_timeout = float(os.getenv("FALCON_DEEPSEEK_TIMEOUT", str(timeout)))
+    gemini_timeout = float(os.getenv("FALCON_GEMINI_TIMEOUT", str(timeout)))
+    gemini_attempts = int(os.getenv("FALCON_GEMINI_MAX_ATTEMPTS", "2"))
+    gemini_retry_delay = float(os.getenv("FALCON_GEMINI_RETRY_DELAY", "1"))
     deepseek_model = os.getenv("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro").strip()
     gemini_model = os.getenv("FALCON_GEMINI_MODEL", "gemini-3.7-flash").strip()
 
-    deepseek = DeepSeekProvider(deepseek_key, model=deepseek_model, timeout=timeout)
-    gemini = GeminiProvider(gemini_key, model=gemini_model, timeout=timeout)
+    deepseek = DeepSeekProvider(deepseek_key, model=deepseek_model, timeout=deepseek_timeout)
+    gemini = GeminiProvider(
+        gemini_key,
+        model=gemini_model,
+        timeout=gemini_timeout,
+        max_attempts=gemini_attempts,
+        retry_delay=gemini_retry_delay,
+    )
 
     evidence = {
         "contract_version": "1.0",
@@ -102,7 +112,13 @@ def main() -> int:
 
     failover = FailoverProvider([
         ("forced_primary_failure", ForcedFailureProvider()),
-        ("gemini", GeminiProvider(gemini_key, model=gemini_model, timeout=timeout)),
+        ("gemini", GeminiProvider(
+            gemini_key,
+            model=gemini_model,
+            timeout=gemini_timeout,
+            max_attempts=gemini_attempts,
+            retry_delay=gemini_retry_delay,
+        )),
     ])
     fallback_result = _run_provider("controlled_failover", failover)
     fallback_result["selected_provider"] = failover.last_provider

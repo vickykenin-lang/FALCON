@@ -62,6 +62,18 @@ class MultiProviderIntelligenceTests(unittest.TestCase):
         self.assertEqual(config["responseJsonSchema"]["type"], "object")
         self.assertTrue(any(k.lower() == "x-goog-api-key" and v == "secret" for k, v in captured["headers"].items()))
 
+    def test_gemini_retries_transient_timeout_then_succeeds(self):
+        calls = {"count": 0}; sleeps = []
+        body = {"candidates": [{"content": {"parts": [{"text": json.dumps(VALID_PLAN)}]}}]}
+        def opener(request, timeout):
+            calls["count"] += 1
+            if calls["count"] == 1: raise TimeoutError("planned_timeout")
+            return Response(json.dumps(body).encode())
+        provider = GeminiProvider("secret", opener=opener, max_attempts=2, retry_delay=0.25, sleeper=sleeps.append)
+        self.assertEqual(provider.decide("inspect", {}), VALID_PLAN)
+        self.assertEqual(calls["count"], 2)
+        self.assertEqual(sleeps, [0.25])
+
     def test_failover_moves_from_primary_failure_to_gemini(self):
         primary = Provider(error=RuntimeError("primary_down")); fallback = Provider(result=VALID_PLAN)
         provider = FailoverProvider([("deepseek", primary), ("gemini", fallback)])
@@ -78,9 +90,11 @@ class MultiProviderIntelligenceTests(unittest.TestCase):
         self.assertEqual(provider.last_provider, "gemini")
 
     def test_auto_composition_prefers_deepseek_and_configures_gemini_fallback(self):
-        brain = build_brain_from_env({"FALCON_DEEPSEEK_API_KEY": "d", "FALCON_GEMINI_API_KEY": "g"})
+        brain = build_brain_from_env({"FALCON_DEEPSEEK_API_KEY": "d", "FALCON_GEMINI_API_KEY": "g", "FALCON_GEMINI_MAX_ATTEMPTS": "3"})
         self.assertIsInstance(brain.provider, FailoverProvider)
         self.assertEqual([name for name, _ in brain.provider.providers], ["deepseek", "gemini"])
+        gemini = brain.provider.providers[1][1]
+        self.assertEqual(gemini.max_attempts, 3)
 
     def test_auto_composition_accepts_single_live_provider(self):
         deepseek_brain = build_brain_from_env({"FALCON_DEEPSEEK_API_KEY": "d"})

@@ -41,19 +41,27 @@ def build_brain_from_env(environ=None) -> Brain:
     if not mode: return Brain()
     if mode == "deterministic": return Brain(DeterministicProvider())
     timeout = float(env.get("FALCON_INTELLIGENCE_TIMEOUT", "60"))
+    deepseek_timeout = float(env.get("FALCON_DEEPSEEK_TIMEOUT", timeout))
+    gemini_timeout = float(env.get("FALCON_GEMINI_TIMEOUT", timeout))
 
     def deepseek():
         if not deepseek_key: raise ValueError("falcon_deepseek_api_key_required")
         return DeepSeekProvider(
             deepseek_key,
             model=str(env.get("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro")).strip(),
-            timeout=timeout,
+            timeout=deepseek_timeout,
             max_tokens=int(env.get("FALCON_DEEPSEEK_MAX_TOKENS", "8192")),
         )
 
     def gemini():
         if not gemini_key: raise ValueError("falcon_gemini_api_key_required")
-        return GeminiProvider(gemini_key, model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.7-flash")).strip(), timeout=timeout)
+        return GeminiProvider(
+            gemini_key,
+            model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.7-flash")).strip(),
+            timeout=gemini_timeout,
+            max_attempts=int(env.get("FALCON_GEMINI_MAX_ATTEMPTS", "2")),
+            retry_delay=float(env.get("FALCON_GEMINI_RETRY_DELAY", "1")),
+        )
 
     if mode in {"auto", "deepseek_gemini", "multi"}:
         providers = []
