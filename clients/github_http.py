@@ -55,3 +55,12 @@ class GitHubHttpClient:
         if branch:payload["branch"]=branch
         clean=quote(str(path).lstrip("/"),safe="/")
         return self._request("PUT",f"/repos/{self._repo(repository)}/contents/{clean}",payload)
+    def dispatch_workflow(self,repository:str,workflow:str,ref:str="main",inputs:dict|None=None):
+        self._require_write()
+        workflow_id=quote(str(workflow).strip(),safe="")
+        if not workflow_id:raise ValueError("workflow_required")
+        payload={"ref":str(ref or "main").strip() or "main"}
+        if inputs is not None:
+            if not isinstance(inputs,dict):raise TypeError("workflow_inputs_must_be_object")
+            payload["inputs"]=inputs
+        return self._request("POST",f"/repos/{self._repo(repository)}/actions/workflows/{workflow_id}/dispatches",payload)
