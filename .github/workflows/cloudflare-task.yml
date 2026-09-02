@@ -53,6 +53,7 @@ jobs:
           OBJECTIVE: ${{ inputs.objective }}
           UPDATE_ID: ${{ inputs.update_id }}
           CHAT_ID: ${{ inputs.chat_id }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           python - <<'PY'
           import json, os
@@ -60,8 +61,12 @@ jobs:
               "enabled": True,
               "task_id": f"telegram-{os.environ['UPDATE_ID']}",
               "objective": os.environ["OBJECTIVE"],
-              "acceptance_criteria": {"execution_result_ok": True},
-              "context": {"channel": "telegram", "chat_id": os.environ["CHAT_ID"]},
+              "acceptance_criteria": {"ok": True},
+              "context": {
+                  "channel": "telegram",
+                  "chat_id": os.environ["CHAT_ID"],
+                  "repository": os.environ["REPOSITORY"],
+              },
           }
           with open("falcon-cloudflare-task.json", "w", encoding="utf-8") as f:
               json.dump(task, f)
