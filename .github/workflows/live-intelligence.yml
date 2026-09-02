@@ -1,0 +1,44 @@
+name: Falcon Live Intelligence Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/live-intelligence.yml'
+      - 'scripts/verify_live_intelligence.py'
+
+permissions:
+  contents: read
+
+jobs:
+  live-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      FALCON_DEEPSEEK_API_KEY: ${{ secrets.FALCON_DEEPSEEK_API_KEY }}
+      FALCON_GEMINI_API_KEY: ${{ secrets.FALCON_GEMINI_API_KEY }}
+      FALCON_DEEPSEEK_MODEL: deepseek-v4-pro
+      FALCON_GEMINI_MODEL: gemini-3.7-flash
+      FALCON_INTELLIGENCE_TIMEOUT: '60'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require live provider secrets
+        shell: bash
+        run: |
+          missing=0
+          if [ -z "$FALCON_DEEPSEEK_API_KEY" ]; then echo "Missing secret: FALCON_DEEPSEEK_API_KEY"; missing=1; fi
+          if [ -z "$FALCON_GEMINI_API_KEY" ]; then echo "Missing secret: FALCON_GEMINI_API_KEY"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then exit 2; fi
+      - name: Run live provider acceptance
+        run: python scripts/verify_live_intelligence.py
+      - name: Upload bounded acceptance evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: falcon-live-intelligence-evidence
+          path: live-intelligence-result.json
+          if-no-files-found: error
+          retention-days: 7
