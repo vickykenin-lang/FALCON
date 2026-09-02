@@ -10,6 +10,12 @@ class Executor:
     def unregister(self,name:str)->None:self.adapters.pop(name,None)
     def replace(self,adapter:ExecutionAdapter)->None:self.register(adapter)
     def available(self)->dict[str,bool]:return {name:adapter.available() for name,adapter in self.adapters.items()}
+    def capability_catalog(self)->list[dict]:
+        catalog=[]
+        for name,adapter in sorted(self.adapters.items()):
+            for operation in adapter.operations():
+                catalog.append({"adapter":name,"operation":operation,"capability":adapter.required_capability(operation),"available":bool(adapter.available())})
+        return catalog
     def execute(self,action:Event,operation_id:str|None=None)->Event:
         name=action.payload.get("adapter"); adapter=self.adapters.get(name)
         if adapter is None:return Event("FAILURE","execution",{"ok":False,"error":f"adapter_not_found:{name}"},correlation_id=action.correlation_id)
