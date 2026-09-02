@@ -8,14 +8,14 @@ on:
       - '.github/workflows/kra1-write-acceptance.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   governed-write:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: .
-      FALCON_GITHUB_TOKEN: ${{ secrets.FALCON_GITHUB_TOKEN }}
+      FALCON_GITHUB_TOKEN: ${{ github.token }}
       FALCON_GITHUB_WRITE_ENABLED: 'true'
     steps:
       - uses: actions/checkout@v4
