@@ -1,12 +1,13 @@
 {
   "enabled": true,
-  "profile": "deterministic_acceptance",
-  "task_id": "founder-live-acceptance-1",
-  "objective": "Inspect Falcon task channel and prove autonomous mission execution",
+  "profile": "github_read_acceptance",
+  "task_id": "founder-real-github-read-1",
+  "objective": "Inspect the live FALCON GitHub repository and verify its identity",
   "acceptance_criteria": {
-    "execution_result_ok": true
+    "full_name": "vickykenin-lang/FALCON"
   },
   "context": {
-    "test_scope": "safe_acceptance"
+    "repository": "vickykenin-lang/FALCON",
+    "test_scope": "real_external_read"
   }
 }
