@@ -111,3 +111,5 @@ jobs:
           print('kra2_completed_operation_replayed=true')
           print('kra2_final_status=SUCCEEDED')
           PY
+
+# fresh acceptance trigger after FALCON_STATE_TOKEN sync
