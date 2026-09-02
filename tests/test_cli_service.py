@@ -1,10 +1,11 @@
 import tempfile
 import unittest
+from datetime import datetime,timezone
 from pathlib import Path
 from unittest.mock import patch
 
 import falcon
-
+from scheduler.engine import Schedule
 
 class CliServiceTests(unittest.TestCase):
     def test_build_service_wires_persistent_scheduler(self):
@@ -25,5 +26,14 @@ class CliServiceTests(unittest.TestCase):
         install.assert_called_once_with(service)
         self.assertTrue(service.ran)
 
+    def test_due_schedule_executes_full_autonomous_mission(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.dict("os.environ",{"FALCON_INTELLIGENCE_MODE":"deterministic"},clear=True):
+            service=falcon.build_service(tmp,tick_seconds=0.01,heartbeat_seconds=1)
+            now=datetime.now(timezone.utc)
+            item=service.scheduler.add(Schedule("inspect scheduled project","ONCE",now.isoformat()),now=now)
+            service.scheduler.tick(now)
+            mission_id=service.scheduler_bridge.started_missions[item.schedule_id]
+            mission=service.runtime.resume(mission_id)
+            self.assertEqual(mission.status,"SUCCEEDED")
 
 if __name__=="__main__": unittest.main()
