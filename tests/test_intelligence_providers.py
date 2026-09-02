@@ -37,7 +37,8 @@ class IntelligenceProviderTests(unittest.TestCase):
     def test_openai_provider_requests_structured_falcon_plan(self):
         captured={}
         plan={"summary":"Inspect","actions":[{"adapter":"github","operation":"get_repository","capability":"github.read","args":{"repository":"owner/repo"},"risk":"low"}],"success_criteria":["repository_read"],"needs_more_context":False}
-        body={"output":[{"type":"message","content":[{"type":"output_text","text":json.dumps(plan)}]}]}
+        provider_plan={"summary":"Inspect","actions":[{"adapter":"github","operation":"get_repository","capability":"github.read","args_json":json.dumps({"repository":"owner/repo"}),"risk":"low"}],"success_criteria":["repository_read"],"needs_more_context":False}
+        body={"output":[{"type":"message","content":[{"type":"output_text","text":json.dumps(provider_plan)}]}]}
         def opener(request,timeout):
             captured["request"]=request; captured["body"]=json.loads(request.data); captured["timeout"]=timeout
             return Response(json.dumps(body).encode())
@@ -46,6 +47,7 @@ class IntelligenceProviderTests(unittest.TestCase):
         self.assertEqual(captured["body"]["model"],"model-x")
         self.assertEqual(captured["body"]["text"]["format"]["type"],"json_schema")
         self.assertTrue(captured["body"]["text"]["format"]["strict"])
+        self.assertFalse(captured["body"]["text"]["format"]["schema"]["additionalProperties"])
         self.assertEqual(captured["timeout"],11)
         self.assertEqual(captured["request"].headers["Authorization"],"Bearer secret-key")
 
