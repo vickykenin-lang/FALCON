@@ -30,6 +30,16 @@ class TaskRunnerTests(unittest.TestCase):
         self.assertEqual(action["args"]["path"],"artifacts/kra1/canary.txt")
         with self.assertRaisesRegex(ValueError,"path_not_sandboxed"):
             task_runner._profile_brain("github_write_acceptance",{"context":{"repository":"owner/repo","path":"README.md","content":"unsafe"}})
+    def test_kra1_workflow_dispatch_and_observation_profiles_are_governed(self):
+        dispatch=task_runner._profile_brain("github_workflow_dispatch_acceptance",{"context":{"repository":"owner/repo","workflow":"ci.yml","ref":"main"}}).plan(Mission("dispatch"))
+        action=dispatch.payload["plan"]["actions"][0]
+        self.assertEqual((action["operation"],action["capability"]),("dispatch_workflow","github.write"))
+        observe=task_runner._profile_brain("github_workflow_runs_acceptance",{"context":{"repository":"owner/repo","per_page":25}}).plan(Mission("observe"))
+        action=observe.payload["plan"]["actions"][0]
+        self.assertEqual((action["operation"],action["capability"]),("get_workflow_runs","github.read")); self.assertEqual(action["args"]["per_page"],25)
+    def test_bounded_evidence_keeps_safe_commit_identifiers_only(self):
+        observed={"ok":True,"nested":{"secret":"ignored"},"content":{"path":"artifacts/kra1/x.txt","token":"ignored"},"commit":{"sha":"abc","author":{"email":"ignored"}}}
+        self.assertEqual(task_runner._bounded_evidence(observed),{"ok":True,"commit_sha":"abc","path":"artifacts/kra1/x.txt"})
     def test_summary_surfaces_block_reason_plan_and_bounded_evidence(self):
         events=[
             {"event_type":"DECISION","source":"brain","payload":{"plan":{"summary":"Inspect the repository safely","actions":[{"adapter":"github","operation":"get_repository"}]}}},
