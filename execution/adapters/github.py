@@ -11,6 +11,7 @@ class GitHubAdapter(ExecutionAdapter):
     WRITE_OPERATIONS={"create_file","update_file"}
     def __init__(self,client=None): self.client=client
     def available(self)->bool:return self.client is not None
+    def operations(self)->tuple[str,...]:return tuple(sorted(self.READ_OPERATIONS|self.WRITE_OPERATIONS))
     def required_capability(self,action:str)->str|None:
         if action in self.READ_OPERATIONS:return "github.read"
         if action in self.WRITE_OPERATIONS:return "github.write"
