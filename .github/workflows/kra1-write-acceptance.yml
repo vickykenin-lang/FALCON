@@ -1,4 +1,4 @@
-# acceptance_revision: 2
+# acceptance_revision: 3
 name: Falcon KRA1 GitHub Write Acceptance
 
 on:
@@ -112,7 +112,7 @@ jobs:
           python - <<'PY'
           import json, os
           path=os.environ['KRA1_REPAIR_PATH']
-          task={"enabled":True,"task_id":f"kra1-repair-{os.environ['GITHUB_RUN_ID']}","objective":f"A controlled verification failed for {path}: expected exact content state=FIXED but observed state=BROKEN. Diagnose and repair the smallest safe change. First inspect the file to obtain its current SHA, update only this file, then reread it and verify exact content. Do not modify any other path.","acceptance_criteria":{"content_text":"state=FIXED\n"},"context":{"repository":"vickykenin-lang/FALCON","path":path,"branch":"main","write_scope":"artifacts/kra1/","failure_evidence":"expected state=FIXED but observed state=BROKEN","expected_content":"state=FIXED\n"}}
+          task={"enabled":True,"task_id":f"kra1-repair-{os.environ['GITHUB_RUN_ID']}","objective":f"A controlled verification failed for {path}: expected exact content state=FIXED but observed state=BROKEN. Diagnose and repair the smallest safe change, update only this file, then reread it and verify exact content. Do not invent or reuse a stale SHA; use an available operation that resolves the current SHA internally when needed. Do not modify any other path.","acceptance_criteria":{"content_text":"state=FIXED\n"},"context":{"repository":"vickykenin-lang/FALCON","path":path,"branch":"main","write_scope":"artifacts/kra1/","failure_evidence":"expected state=FIXED but observed state=BROKEN","expected_content":"state=FIXED\n"}}
           json.dump(task,open('kra1-repair.json','w',encoding='utf-8'))
           PY
       - name: Let live Falcon diagnose and repair automatically
