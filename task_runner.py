@@ -14,43 +14,21 @@ def _load(path:str)->dict:
     if not isinstance(data,dict):raise ValueError("task_request_must_be_object")
     return data
 
-def _bounded_evidence(observed)->dict|None:
-    if not isinstance(observed,dict):return None
-    result={}
-    for key,value in observed.items():
-        if isinstance(value,(str,int,float,bool)) or value is None:
-            result[str(key)]=value[:240] if isinstance(value,str) else value
-            if len(result)>=8:break
-    return result or None
-
 def _summary(runtime,mission)->dict:
     events=runtime.memory.recent(250) if runtime.memory else []
-    verification=None; reason=None; plan_summary=None; actions=[]; evidence=None
+    verification=None; reason=None; plan_summary=None; actions=[]; evidence={}
     for event in events:
         payload=event.get("payload",{}) if isinstance(event,dict) else {}
         if event.get("event_type")=="DECISION" and event.get("source")=="brain" and isinstance(payload.get("plan"),dict):
-            plan=payload["plan"]; plan_summary=str(plan.get("summary","")).strip() or plan_summary
+            plan=payload["plan"]; plan_summary=plan.get("summary")
             actions=[f"{item.get('adapter')}.{item.get('operation')}" for item in plan.get("actions",[]) if isinstance(item,dict)]
-        if event.get("event_type")=="ALERT":
-            reason=str(payload.get("reason") or reason or "").strip() or reason
-        if event.get("event_type")=="FAILURE":
-            reason=str(payload.get("error") or payload.get("message") or reason or "").strip() or reason
+        if event.get("event_type")=="ALERT" and not reason: reason=payload.get("reason")
+        if event.get("event_type")=="FAILURE" and not reason: reason=payload.get("detail") or payload.get("error")
         if event.get("event_type")=="RESULT" and event.get("source")=="autonomic_driver":
             verification={k:payload.get(k) for k in ("ok","execution_ok","evaluation_score","lesson")}
-            evidence=_bounded_evidence(payload.get("observed"))
-    return {
-        "mission_id":mission.mission_id,
-        "objective":mission.objective,
-        "status":mission.status,
-        "attempts":mission.attempts,
-        "reason":reason,
-        "plan_summary":plan_summary,
-        "actions":actions,
-        "verification":verification,
-        "evidence":evidence,
-        "event_types":[event.get("event_type") for event in events],
-        "event_count":len(events),
-    }
+            observed=payload.get("observed")
+            if isinstance(observed,dict): evidence={k:v for k,v in observed.items() if k not in {"content","content_text"}}
+    return {"mission_id":mission.mission_id,"objective":mission.objective,"status":mission.status,"attempts":mission.attempts,"reason":reason,"plan_summary":plan_summary,"actions":actions,"evidence":evidence,"verification":verification,"event_types":[event.get("event_type") for event in events],"event_count":len(events)}
 
 def _profile_brain(profile:str,task:dict):
     if not profile:return None
@@ -59,6 +37,14 @@ def _profile_brain(profile:str,task:dict):
         repository=str((task.get("context") or {}).get("repository","")).strip()
         if not repository:raise ValueError("github_read_acceptance_repository_required")
         return Brain(DeterministicProvider("github","get_repository","github.read",{"repository":repository}))
+    if profile=="github_write_acceptance":
+        context=task.get("context") or {}
+        repository=str(context.get("repository","")).strip(); path=str(context.get("path","")).strip()
+        content=str(context.get("content","")).strip(); message=str(context.get("message","Falcon KRA1 governed write acceptance")).strip()
+        if not repository:raise ValueError("github_write_acceptance_repository_required")
+        if not path.startswith("artifacts/kra1/") or path.endswith("/"):raise ValueError("github_write_acceptance_path_not_sandboxed")
+        if not content:raise ValueError("github_write_acceptance_content_required")
+        return Brain(DeterministicProvider("github","create_file","github.write",{"repository":repository,"path":path,"content":content,"message":message,"branch":"main"}))
     raise ValueError(f"unsupported_task_profile:{profile}")
 
 def main()->int:
