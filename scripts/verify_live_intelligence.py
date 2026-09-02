@@ -105,7 +105,7 @@ def main() -> int:
     gemini_retry_delay = float(os.getenv("FALCON_GEMINI_RETRY_DELAY", "1"))
     gemini_max_output_tokens = int(os.getenv("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096"))
     deepseek_model = os.getenv("FALCON_DEEPSEEK_MODEL", "deepseek-v4-pro").strip()
-    gemini_model = os.getenv("FALCON_GEMINI_MODEL", "gemini-3.7-flash").strip()
+    gemini_model = os.getenv("FALCON_GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
 
     deepseek = DeepSeekProvider(deepseek_key, model=deepseek_model, timeout=deepseek_timeout)
     gemini = _gemini(gemini_key, gemini_model, gemini_timeout, gemini_attempts, gemini_retry_delay, gemini_max_output_tokens)
