@@ -16,9 +16,15 @@ def _load(path:str)->dict:
 
 def _bounded_evidence(observed:dict)->dict:
     evidence={k:v for k,v in observed.items() if k not in {"content","content_text"} and isinstance(v,(str,int,float,bool,type(None)))}
-    commit=observed.get("commit"); content=observed.get("content")
+    commit=observed.get("commit"); content=observed.get("content"); runs=observed.get("workflow_runs")
     if isinstance(commit,dict) and commit.get("sha"): evidence["commit_sha"]=str(commit["sha"])
     if isinstance(content,dict) and content.get("path"): evidence["path"]=str(content["path"])
+    if isinstance(runs,list):
+        bounded=[]
+        for item in runs[:20]:
+            if not isinstance(item,dict):continue
+            bounded.append({k:item.get(k) for k in ("id","name","event","status","conclusion","head_sha","run_number")})
+        evidence["workflow_runs"]=bounded
     return evidence
 
 def _summary(runtime,mission)->dict:
