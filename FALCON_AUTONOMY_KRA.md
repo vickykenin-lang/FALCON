@@ -21,16 +21,23 @@ Fresh pass evidence — acceptance run `33658572003`:
 
 KRA-1 is therefore closed as **PASS**. Production write authority remains separately governed; passing this acceptance does not silently enable unrestricted GitHub writes.
 
-## KRA-2 — Durable Memory
+## KRA-2 — Durable Memory — PASS
 
 Target: mission state, evidence, decisions, lessons, and resumable context survive process/runtime restarts.
 
-Pass evidence:
-- active mission state persists outside ephemeral execution;
-- restart occurs;
-- Falcon restores the same mission and relevant context;
-- duplicate execution is prevented;
-- prior evidence and lessons are available after recovery.
+Fresh pass evidence — acceptance run `33780678023`:
+- Cloudflare D1 durable state backend was live and authenticated;
+- first GitHub runner persisted an active mission, memory events, and a completed operation outside runner-local storage;
+- first runner ended before final mission completion, simulating process loss/restart;
+- a separate fresh GitHub runner restored the exact same mission ID and `EXECUTING` status from D1;
+- relevant prior context and the stored lesson `durable lesson survives runner restart` were recovered;
+- completed-operation journal replayed the prior execution result instead of calling the executor again;
+- an intentionally exploding executor remained uncalled, proving duplicate execution prevention;
+- duplicate source/request acceptance was suppressed so only one durable REQUEST existed for the source ID;
+- recovery evidence reported `kra2_same_mission_restored=true`, `kra2_context_restored=true`, `kra2_prior_lesson_restored=true`, `kra2_duplicate_execution_prevented=true`, `kra2_completed_operation_replayed=true`, and `kra2_final_status=SUCCEEDED`;
+- both `seed-before-restart` and `recover-after-restart` jobs completed `success`.
+
+KRA-2 is therefore closed as **PASS**. The state and memory HTTP clients use explicit Falcon request identities so Cloudflare can distinguish governed Falcon traffic from generic automation traffic.
 
 ## KRA-3 — Autonomous Scheduler / Heartbeat
 
@@ -115,8 +122,8 @@ Revenue-linked success must be measured by business evidence such as qualified l
 ## Execution Priority
 
 1. KRA-1 Real Execution / GitHub Write — PASS
-2. KRA-2 Durable Memory — NEXT
-3. KRA-3 Autonomous Scheduler / Heartbeat
+2. KRA-2 Durable Memory — PASS
+3. KRA-3 Autonomous Scheduler / Heartbeat — NEXT
 4. KRA-4 Browser + MCP
 5. KRA-5 General Execution Adapter
 6. KRA-6 Live Control & Observability
