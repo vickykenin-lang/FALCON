@@ -20,8 +20,8 @@ async function stateDb(env) {
 }
 
 function stateAuthorized(request, env) {
-  const configured = String(env.FALCON_STATE_TOKEN || "");
-  const supplied = request.headers.get("Authorization") || "";
+  const configured = String(env.FALCON_STATE_TOKEN || "").trim();
+  const supplied = String(request.headers.get("Authorization") || "").trim();
   return configured.length >= 24 && supplied === `Bearer ${configured}`;
 }
 
