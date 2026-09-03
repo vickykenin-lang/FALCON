@@ -18,7 +18,11 @@ class HttpMemoryBackend(MemoryBackend):
 
     def _request(self, method: str, path: str, payload: dict | None = None):
         body = None if payload is None else json.dumps(payload).encode("utf-8")
-        headers = {"Accept": "application/json", "Authorization": f"Bearer {self.token}"}
+        headers = {
+            "Accept": "application/json",
+            "Authorization": f"Bearer {self.token}",
+            "User-Agent": "falcon-memory-client/1.0",
+        }
         if body is not None: headers["Content-Type"] = "application/json"
         request = Request(f"{self.endpoint}{path}", data=body, headers=headers, method=method)
         try:
