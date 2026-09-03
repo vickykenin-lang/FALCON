@@ -25,6 +25,44 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Bounded state-auth preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, os
+          token=os.environ.get('FALCON_STATE_TOKEN','').strip()
+          expected='d0d13e4fb411823b31401def944407b0ebc5ac379b2b64a863b2fa993a3366f1'
+          print(f'github_state_token_length={len(token)}')
+          print(f'github_state_token_matches_expected={hashlib.sha256(token.encode()).hexdigest()==expected}')
+          PY
+
+          unauth_status="$(curl -sS -o /tmp/state-unauth.json -w '%{http_code}' \
+            -H 'Accept: application/json' \
+            -H 'User-Agent: falcon-kra2-preflight' \
+            "$FALCON_STATE_ENDPOINT/state/health")"
+          echo "state_unauth_status=$unauth_status"
+          if [ -s /tmp/state-unauth.json ]; then
+            python - <<'PY'
+          from pathlib import Path
+          raw=Path('/tmp/state-unauth.json').read_text(encoding='utf-8',errors='replace')[:1000]
+          print('state_unauth_body='+raw.replace('\n',' '))
+          PY
+          fi
+
+          auth_status="$(curl -sS -o /tmp/state-auth.json -w '%{http_code}' \
+            -H 'Accept: application/json' \
+            -H 'User-Agent: falcon-kra2-preflight' \
+            -H "Authorization: Bearer $FALCON_STATE_TOKEN" \
+            "$FALCON_STATE_ENDPOINT/state/health")"
+          echo "state_auth_status=$auth_status"
+          if [ -s /tmp/state-auth.json ]; then
+            python - <<'PY'
+          from pathlib import Path
+          raw=Path('/tmp/state-auth.json').read_text(encoding='utf-8',errors='replace')[:1000]
+          print('state_auth_body='+raw.replace('\n',' '))
+          PY
+          fi
       - id: seed
         name: Persist active mission, memory and completed operation
         run: |
@@ -111,7 +149,3 @@ jobs:
           print('kra2_completed_operation_replayed=true')
           print('kra2_final_status=SUCCEEDED')
           PY
-
-# fresh acceptance trigger after latest Cloudflare FALCON_STATE_TOKEN deployment
-# recheck after propagation wait
-# recheck after whitespace-safe Worker auth deployment
