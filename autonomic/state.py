@@ -105,7 +105,23 @@ class HttpMissionStateBackend(MissionStateBackend):
             raw = self.opener(request, timeout=self.timeout).read()
         except HTTPError as exc:
             if exc.code == 404 and method == "GET": return None
-            raise RuntimeError(f"state_http_error:{exc.code}") from exc
+            detail = ""
+            try:
+                error_raw = exc.read()
+                if error_raw:
+                    parsed = json.loads(error_raw)
+                    if isinstance(parsed, dict) and parsed.get("error") == "state_forbidden":
+                        bounded = {
+                            "configured_length": parsed.get("configured_length"),
+                            "supplied_length": parsed.get("supplied_length"),
+                            "configured_matches_expected": parsed.get("configured_matches_expected"),
+                            "supplied_matches_expected": parsed.get("supplied_matches_expected"),
+                            "bearer_prefix": parsed.get("bearer_prefix"),
+                        }
+                        detail = f":diag={json.dumps(bounded, separators=(',', ':'))}"
+            except Exception:
+                detail = ""
+            raise RuntimeError(f"state_http_error:{exc.code}{detail}") from exc
         except URLError as exc:
             raise RuntimeError("state_backend_unreachable") from exc
         if not raw: return {}
