@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/kra2-durable-memory-acceptance.yml'
+      - 'autonomic/state.py'
 
 permissions:
   contents: read
