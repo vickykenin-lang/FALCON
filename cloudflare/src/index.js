@@ -1,7 +1,14 @@
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
+const TEMP_STATE_TOKEN_SHA256 = "d0d13e4fb411823b31401def944407b0ebc5ac379b2b64a863b2fa993a3366f1";
 
 function safeText(value) {
   return String(value || "").trim().slice(0, 4000);
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(String(value || ""));
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 let schemaPromise;
@@ -25,12 +32,29 @@ function stateAuthorized(request, env) {
   return configured.length >= 24 && supplied === `Bearer ${configured}`;
 }
 
+async function stateAuthDiagnostic(request, env) {
+  const configured = String(env.FALCON_STATE_TOKEN || "").trim();
+  const authorization = String(request.headers.get("Authorization") || "").trim();
+  const bearerPrefix = authorization.startsWith("Bearer ");
+  const supplied = bearerPrefix ? authorization.slice(7).trim() : authorization;
+  const [configuredHash, suppliedHash] = await Promise.all([sha256Hex(configured), sha256Hex(supplied)]);
+  return {
+    ok: false,
+    error: "state_forbidden",
+    configured_length: configured.length,
+    supplied_length: supplied.length,
+    configured_matches_expected: configuredHash === TEMP_STATE_TOKEN_SHA256,
+    supplied_matches_expected: suppliedHash === TEMP_STATE_TOKEN_SHA256,
+    bearer_prefix: bearerPrefix,
+  };
+}
+
 async function requestJson(request) {
   try { return await request.json(); } catch { return null; }
 }
 
 async function handleState(request, env, url) {
-  if (!stateAuthorized(request, env)) return new Response("Forbidden", { status: 403 });
+  if (!stateAuthorized(request, env)) return json(await stateAuthDiagnostic(request, env), 403);
   let db;
   try { db = await stateDb(env); } catch { return json({ ok: false, error: "state_backend_not_configured" }, 503); }
   const now = new Date().toISOString();
