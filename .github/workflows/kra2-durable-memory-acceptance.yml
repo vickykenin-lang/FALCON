@@ -112,4 +112,4 @@ jobs:
           print('kra2_final_status=SUCCEEDED')
           PY
 
-# fresh acceptance trigger after FALCON_STATE_TOKEN sync
+# fresh acceptance trigger after latest Cloudflare FALCON_STATE_TOKEN deployment
