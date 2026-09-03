@@ -7,6 +7,7 @@ on:
     paths:
       - '.github/workflows/kra2-durable-memory-acceptance.yml'
       - 'autonomic/state.py'
+      - 'memory/http.py'
 
 permissions:
   contents: read
