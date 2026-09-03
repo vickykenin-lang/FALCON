@@ -114,3 +114,4 @@ jobs:
 
 # fresh acceptance trigger after latest Cloudflare FALCON_STATE_TOKEN deployment
 # recheck after propagation wait
+# recheck after whitespace-safe Worker auth deployment
