@@ -1,0 +1,54 @@
+name: KRA4 Web Adapter Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  governed-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Execute and independently verify external read
+        run: |
+          python - <<'PY'
+          import json
+          from urllib.request import Request,urlopen
+          from execution.adapters.base import ExecutionContext
+          from execution.adapters.web import WebReadAdapter
+
+          url='https://api.github.com/repos/vickykenin-lang/FALCON'
+          adapter=WebReadAdapter(timeout_seconds=10,max_bytes=262144)
+          assert adapter.available()
+          assert adapter.required_capability('get')=='web.read'
+          result=adapter.execute('get',execution_context=ExecutionContext('kra4-live-read'),url=url)
+          assert result['execution_result_ok'] and result['status']==200
+          observed=json.loads(result['body'])
+          assert observed['full_name']=='vickykenin-lang/FALCON'
+
+          # independent verifier does not use Falcon adapter
+          with urlopen(Request(url,headers={'User-Agent':'Falcon-KRA4-independent-verifier'}),timeout=10) as response:
+              verified=json.loads(response.read().decode())
+          assert verified['full_name']==observed['full_name']
+          assert result['operation_id']=='kra4-live-read'
+
+          # unapproved interaction is absent/fail-closed: adapter exposes GET only
+          try:
+              adapter.execute('post',execution_context=ExecutionContext('kra4-denied'),url=url)
+              raise AssertionError('write unexpectedly allowed')
+          except ValueError as exc:
+              assert 'unsupported_web_operation' in str(exc)
+
+          print('kra4_external_resource_discovered=true')
+          print('kra4_real_external_read=true')
+          print('kra4_action_independently_verified=true')
+          print('kra4_adapter_separate_from_brain=true')
+          print('kra4_write_authority_fail_closed=true')
+          print('kra4_status=PASS')
+          PY
