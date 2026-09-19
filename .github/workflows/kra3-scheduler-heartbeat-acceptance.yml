@@ -1,0 +1,71 @@
+name: KRA3 Scheduler Heartbeat Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scheduler-heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run KRA-3 acceptance
+        run: |
+          python - <<'PY'
+          import json, tempfile
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from scheduler.engine import Schedule, Scheduler
+
+          root = Path(tempfile.mkdtemp())
+          state = root / 'schedules.json'
+          evidence = root / 'evidence.json'
+          now = datetime.now(timezone.utc)
+          fired = []
+
+          def on_due(item):
+              fired.append({'schedule_id': item.schedule_id, 'objective': item.objective})
+
+          # Process A: persist recurring work, then disappear before it is due.
+          first = Scheduler(str(state), on_due=on_due)
+          item = first.add(Schedule(objective='KRA3 autonomous continuation canary', mode='RECURRING', schedule_expression='every:1'), now=now)
+          persisted_next = item.next_run_at
+          del first
+
+          # Process B: fresh scheduler restores state and fires without Founder input.
+          restored = Scheduler(str(state), on_due=on_due)
+          due_time = now + timedelta(seconds=2)
+          triggered = restored.tick(now=due_time)
+          assert len(triggered) == 1, f'expected one autonomous trigger, got {len(triggered)}'
+          assert fired and fired[0]['schedule_id'] == item.schedule_id
+          assert restored.schedules[item.schedule_id].last_run_at is not None
+          assert restored.schedules[item.schedule_id].next_run_at is not None
+          assert restored.schedules[item.schedule_id].next_run_at != persisted_next
+
+          # Process C: another fresh process proves the continuation state survived again.
+          resumed = Scheduler(str(state), on_due=on_due)
+          restored_item = resumed.schedules[item.schedule_id]
+          assert restored_item.last_run_at == restored.schedules[item.schedule_id].last_run_at
+          assert restored_item.next_run_at == restored.schedules[item.schedule_id].next_run_at
+          assert restored_item.enabled is True
+
+          result = {
+              'kra3_scheduled_mission_fired_automatically': True,
+              'kra3_unfinished_schedule_restored_after_restart': True,
+              'kra3_heartbeat_detected_actionable_due_work': True,
+              'kra3_continuation_state_persisted': True,
+              'schedule_id': item.schedule_id,
+              'trigger_count': len(triggered),
+              'status': 'PASS',
+          }
+          evidence.write_text(json.dumps(result, indent=2), encoding='utf-8')
+          print(json.dumps(result, indent=2))
+          PY
+      - name: Run scheduler regression tests
+        run: python -m unittest tests.test_v1 tests.test_durable_state -v
