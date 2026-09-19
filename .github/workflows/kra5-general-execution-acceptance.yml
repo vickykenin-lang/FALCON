@@ -1,0 +1,71 @@
+name: KRA5 General Execution Acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-execution:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify bounded general execution
+        run: |
+          python - <<'PY'
+          import sys, threading, time
+          from execution.sandbox import Sandbox, SandboxRequest
+          from execution.sandboxes.local import LocalSandboxBackend
+
+          backend = LocalSandboxBackend(allowed_commands={sys.executable})
+          sandbox = Sandbox(backend)
+
+          # allowlisted execution + stdout/stderr/result evidence
+          ok = sandbox.run(SandboxRequest(sys.executable, {'argv':['-c','import sys; print("falcon-kra5-out"); print("falcon-kra5-err", file=sys.stderr)']}, timeout_seconds=5))
+          assert ok.ok
+          assert 'falcon-kra5-out' in ok.output['stdout']
+          assert 'falcon-kra5-err' in ok.output['stderr']
+          assert ok.output['returncode'] == 0
+
+          # authority cannot silently expand to another command
+          denied = sandbox.run(SandboxRequest('sh', {'argv':['-c','echo forbidden']}, timeout_seconds=2))
+          assert not denied.ok and denied.error == 'command_not_allowed'
+
+          # network is fail-closed at this adapter boundary
+          network = sandbox.run(SandboxRequest(sys.executable, {'argv':['-c','print(1)']}, timeout_seconds=2, network=True))
+          assert not network.ok and network.error == 'network_not_supported'
+
+          # bounded timeout
+          timeout = sandbox.run(SandboxRequest(sys.executable, {'argv':['-c','import time; time.sleep(3)']}, timeout_seconds=1))
+          assert not timeout.ok and timeout.error == 'timeout'
+
+          # request-scoped cancellation
+          request = SandboxRequest(sys.executable, {'argv':['-c','import time; time.sleep(30)']}, timeout_seconds=10)
+          box = {}
+          thread = threading.Thread(target=lambda: box.setdefault('result', sandbox.run(request)))
+          thread.start()
+          deadline = time.time()+3
+          cancelled = False
+          while time.time() < deadline and not cancelled:
+              cancelled = backend.cancel(request.request_id)
+              if not cancelled: time.sleep(.05)
+          thread.join(timeout=5)
+          assert cancelled, 'cancellation did not reach active process'
+          assert 'result' in box and not box['result'].ok
+          assert box['result'].error == 'cancelled'
+
+          print('kra5_allowlisted_execution=true')
+          print('kra5_stdout_stderr_captured=true')
+          print('kra5_timeout_enforced=true')
+          print('kra5_cancellation_verified=true')
+          print('kra5_authority_expansion_blocked=true')
+          print('kra5_network_fail_closed=true')
+          print('kra5_status=PASS')
+          PY
+      - name: Regression tests
+        run: python -m unittest tests.test_execution_cancellation tests.test_v1 -v
