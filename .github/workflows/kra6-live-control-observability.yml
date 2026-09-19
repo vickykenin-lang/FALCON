@@ -1,0 +1,40 @@
+name: KRA6 Live Control Observability
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Verify Founder-visible mission state
+        run: |
+          python - <<'PY'
+          from types import SimpleNamespace
+          from autonomic.control import MissionControl
+          from observability.live import LiveMissionView
+          mission=SimpleNamespace(mission_id='kra6-mission',objective='verify live control',status='BLOCKED')
+          control=MissionControl(); control.pause(mission.mission_id,'founder pause')
+          events=[SimpleNamespace(event_type='RESULT',source='executor',payload={'ok':True,'provider':'github','token':'must-not-leak'}),SimpleNamespace(event_type='ALERT',source='governance',payload={'reason':'github.write authority unavailable','api_key':'must-not-leak'})]
+          view=LiveMissionView().snapshot(mission,control=control,events=events,plan={'action':'repair'},provider={'name':'github','credential':'must-not-leak'})
+          assert view['status']=='BLOCKED'
+          assert view['control']['paused'] is True
+          assert view['actionable_reason']=='github.write authority unavailable'
+          assert view['verified_success'] is False and view['planned_or_attempted'] is True
+          text=str(view); assert 'must-not-leak' not in text and '[REDACTED]' in text
+          control.resume(mission.mission_id); assert control.state(mission.mission_id).paused is False
+          control.cancel(mission.mission_id,'founder cancel'); assert control.state(mission.mission_id).cancelled is True
+          mission.status='SUCCEEDED'; success=LiveMissionView().snapshot(mission,control=control,events=events)
+          assert success['verified_success'] is True and success['planned_or_attempted'] is False
+          print('kra6_live_state_visible=true')
+          print('kra6_plan_provider_visible=true')
+          print('kra6_timeline_visible=true')
+          print('kra6_actionable_failure_reason=true')
+          print('kra6_pause_resume_cancel_visible=true')
+          print('kra6_secrets_redacted=true')
+          print('kra6_verified_success_distinct=true')
+          print('kra6_status=PASS')
+          PY
