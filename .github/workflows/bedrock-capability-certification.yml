@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install clients
-        run: python -m pip install --upgrade 'openai>=2,<3' 'requests>=2,<3'
+        run: python -m pip install --upgrade 'openai>=2,<3' 'requests>=2,<3' 'pillow>=10,<13'
       - name: Verify secret injection
         run: |
           python - <<'PY'
@@ -34,61 +34,47 @@ jobs:
           import json, os
           import requests
           from openai import OpenAI
-
-          key = os.environ['BEDROCK_API_KEY']
-          root = os.environ['MANTLE_ROOT'].rstrip('/')
-          generic = OpenAI(api_key=key, base_url=root + '/v1', timeout=120.0)
-          evidence = {'credential_available': True, 'configured': True, 'region':'us-east-1', 'tests': []}
-
-          def record(role, model, endpoint, ok=False, output=False, match=False, preview='', error=''):
+          key=os.environ['BEDROCK_API_KEY']; root=os.environ['MANTLE_ROOT'].rstrip('/')
+          generic=OpenAI(api_key=key,base_url=root+'/v1',timeout=120.0)
+          evidence={'credential_available':True,'configured':True,'region':'us-east-1','tests':[]}
+          def record(role,model,endpoint,ok=False,output=False,match=False,preview='',error=''):
             row={'role':role,'model':model,'endpoint':endpoint,'live_request_verified':ok,'real_output_verified':output,'output_match':match}
             if preview: row['output_preview']=preview[:240]
             if error: row['error']=error[:1200]
-            evidence['tests'].append(row)
-            print(f'test role={role} model={model} live={ok} output={output} match={match}')
+            evidence['tests'].append(row); print(f'test role={role} model={model} live={ok} output={output} match={match}')
             if error: print(f'error role={role}: {error[:700]}')
-
-          def chat(role, model, token):
+          def chat(role,model,token):
             try:
               r=generic.chat.completions.create(model=model,messages=[{'role':'user','content':f'Return exactly this token and nothing else: {token}'}],max_tokens=96,temperature=0)
-              text=(r.choices[0].message.content or '').strip()
-              record(role,model,root+'/v1',True,bool(text),token in text,text)
-            except Exception as exc:
-              record(role,model,root+'/v1',error=f'{type(exc).__name__}: {exc}')
-
-          # Proven baseline + models AWS documents as not sold through Marketplace.
+              text=(r.choices[0].message.content or '').strip(); record(role,model,root+'/v1',True,bool(text),token in text,text)
+            except Exception as exc: record(role,model,root+'/v1',error=f'{type(exc).__name__}: {exc}')
           chat('primary_coder','qwen.qwen3-coder-next','FALCON_QWEN_OK')
           chat('reasoning_control','qwen.qwen3-32b','FALCON_QWEN32_OK')
           chat('openai_oss_reasoning','openai.gpt-oss-120b','FALCON_GPTOSS_OK')
           chat('deepseek_reasoning','deepseek.deepseek-v3.2','FALCON_DEEPSEEK_OK')
-
-          # Additional discovered candidate; result is evidence, not assumed access.
           chat('kimi_reasoning','moonshotai.kimi-k2.5','FALCON_KIMI_OK')
-
-          # Proprietary controls: correct provider-native routes. Expected to expose entitlement state precisely.
           try:
             oa=OpenAI(api_key=key,base_url=root+'/openai/v1',timeout=120.0)
             r=oa.responses.create(model='openai.gpt-5.6-sol',input='Return exactly this token and nothing else: FALCON_SOL_OK',max_output_tokens=128)
-            text=(getattr(r,'output_text',None) or '').strip()
-            record('proprietary_openai','openai.gpt-5.6-sol',root+'/openai/v1',True,bool(text),'FALCON_SOL_OK' in text,text)
-          except Exception as exc:
-            record('proprietary_openai','openai.gpt-5.6-sol',root+'/openai/v1',error=f'{type(exc).__name__}: {exc}')
-
+            text=(getattr(r,'output_text',None) or '').strip(); record('proprietary_openai','openai.gpt-5.6-sol',root+'/openai/v1',True,bool(text),'FALCON_SOL_OK' in text,text)
+          except Exception as exc: record('proprietary_openai','openai.gpt-5.6-sol',root+'/openai/v1',error=f'{type(exc).__name__}: {exc}')
           try:
             endpoint=root+'/anthropic/v1/messages'
             r=requests.post(endpoint,headers={'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},json={'model':'anthropic.claude-sonnet-5','max_tokens':128,'temperature':0,'messages':[{'role':'user','content':'Return exactly this token and nothing else: FALCON_CLAUDE_OK'}]},timeout=120)
             if not r.ok: raise RuntimeError(f'HTTP {r.status_code}: {r.text[:900]}')
-            data=r.json(); text=''.join(x.get('text','') for x in data.get('content',[]) if x.get('type')=='text').strip()
-            record('proprietary_anthropic','anthropic.claude-sonnet-5',endpoint,True,bool(text),'FALCON_CLAUDE_OK' in text,text)
-          except Exception as exc:
-            record('proprietary_anthropic','anthropic.claude-sonnet-5',root+'/anthropic/v1/messages',error=f'{type(exc).__name__}: {exc}')
-
+            data=r.json(); text=''.join(x.get('text','') for x in data.get('content',[]) if x.get('type')=='text').strip(); record('proprietary_anthropic','anthropic.claude-sonnet-5',endpoint,True,bool(text),'FALCON_CLAUDE_OK' in text,text)
+          except Exception as exc: record('proprietary_anthropic','anthropic.claude-sonnet-5',root+'/anthropic/v1/messages',error=f'{type(exc).__name__}: {exc}')
           evidence['real_output_count']=sum(1 for x in evidence['tests'] if x['real_output_verified'])
           with open('bedrock-capability-controls.json','w',encoding='utf-8') as f: json.dump(evidence,f,indent=2)
           PY
+      - name: Real-image vision certification
+        continue-on-error: true
+        run: python scripts/bedrock_vision_cert.py
       - name: Upload certification evidence
         uses: actions/upload-artifact@v4
         with:
           name: bedrock-capability-controls
-          path: bedrock-capability-controls.json
+          path: |
+            bedrock-capability-controls.json
+            bedrock-vision-cert.json
           retention-days: 14
