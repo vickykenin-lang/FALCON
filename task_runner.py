@@ -8,14 +8,19 @@ from brain.engine import Brain
 from brain.providers.deterministic import DeterministicProvider
 
 TERMINAL={"SUCCEEDED","FAILED","BLOCKED","CANCELLED"}
+SENSITIVE_EVIDENCE_KEYS={"authorization","api_key","apikey","token","access_token","refresh_token","secret","password","credential","credentials","cookie","set_cookie"}
 
 def _load(path:str)->dict:
     data=json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data,dict):raise ValueError("task_request_must_be_object")
     return data
 
+def _safe_evidence_key(key)->bool:
+    normalized=str(key).strip().lower().replace("-","_")
+    return normalized not in SENSITIVE_EVIDENCE_KEYS and not any(marker in normalized for marker in ("secret","password","credential","api_key","apikey","token","authorization","cookie"))
+
 def _bounded_evidence(observed:dict)->dict:
-    evidence={k:v for k,v in observed.items() if k not in {"content","content_text"} and isinstance(v,(str,int,float,bool,type(None)))}
+    evidence={k:v for k,v in observed.items() if k not in {"content","content_text"} and _safe_evidence_key(k) and isinstance(v,(str,int,float,bool,type(None)))}
     commit=observed.get("commit"); content=observed.get("content"); runs=observed.get("workflow_runs")
     if isinstance(commit,dict) and commit.get("sha"): evidence["commit_sha"]=str(commit["sha"])
     if isinstance(content,dict) and content.get("path"): evidence["path"]=str(content["path"])
