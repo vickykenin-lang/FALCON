@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  text-models:
+  diagnose-bedrock:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -17,31 +17,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Bedrock SDK
-        run: python -m pip install 'boto3>=1.40,<2'
-      - name: Verify secret is injected without exposing it
+      - name: Install current Bedrock SDK
+        run: python -m pip install --upgrade 'boto3>=1.43,<2'
+      - name: Verify secret injection
         run: |
           python - <<'PY'
           import os
-          value=os.environ.get('AWS_BEARER_TOKEN_BEDROCK','')
-          assert value, 'BEDROCK_API_KEY repository secret is missing or empty'
+          assert os.environ.get('AWS_BEARER_TOKEN_BEDROCK'), 'BEDROCK_API_KEY missing/empty'
           print('credential_injected=true')
-          print('credential_length_nonzero=true')
           PY
-      - name: Live Bedrock model certification
+      - name: Diagnose regions and live model access
         run: |
           python - <<'PY'
-          import json, os, boto3
+          import json, boto3
           from botocore.exceptions import ClientError
 
-          # Candidate IDs are tested, never assumed available. Each result is evidence.
+          # Mumbai controls tell us whether the key itself works in the region where it was expected to be created.
+          # US/Sydney controls distinguish key-region restrictions from model/access failures.
           candidates = [
-            ('qwen_coder_next','us-east-1','qwen.qwen3-coder-next'),
-            ('claude_sonnet_46','us-east-1','us.anthropic.claude-sonnet-4-6'),
+            ('mumbai_qwen32','ap-south-1','qwen.qwen3-32b-v1:0'),
+            ('mumbai_qwen_coder30','ap-south-1','qwen.qwen3-coder-30b-a3b-v1:0'),
+            ('mumbai_qwen_coder480','ap-south-1','qwen.qwen3-coder-480b-a35b-v1:0'),
+            ('mumbai_qwen_next80','ap-south-1','qwen.qwen3-next-80b-a3b'),
+            ('mumbai_qwen_vl_text_control','ap-south-1','qwen.qwen3-vl-235b-a22b'),
+            ('us_qwen_coder_next','us-east-1','qwen.qwen3-coder-next'),
+            ('sydney_qwen_coder_next','ap-southeast-2','qwen.qwen3-coder-next'),
+            ('mumbai_openai_oss20','ap-south-1','openai.gpt-oss-20b-1:0'),
+            ('mumbai_deepseek_v32','ap-south-1','deepseek.v3.2'),
+            ('mumbai_claude_haiku3','ap-south-1','anthropic.claude-3-haiku-20240307-v1:0'),
+            ('us_claude_sonnet46','us-east-1','us.anthropic.claude-sonnet-4-6'),
           ]
           results=[]
           for name,region,model in candidates:
-            row={'name':name,'region':region,'model':model,'credential_available':True,'configured':True,'live_request_verified':False,'real_output_verified':False}
+            row={'name':name,'region':region,'model':model,'credential_available':True,'configured':True,'request_attempted':True,'live_request_verified':False,'real_output_verified':False}
             try:
               client=boto3.client('bedrock-runtime',region_name=region)
               response=client.converse(
@@ -59,19 +67,18 @@ jobs:
               if isinstance(exc,ClientError):
                 err=exc.response.get('Error',{})
                 row['error_code']=err.get('Code')
-                row['error_message']=str(err.get('Message',''))[:300]
+                row['error_message']=str(err.get('Message',''))[:500]
+                row['http_status']=exc.response.get('ResponseMetadata',{}).get('HTTPStatusCode')
               else:
-                row['error_message']=str(exc)[:300]
+                row['error_message']=str(exc)[:500]
             results.append(row)
             print(json.dumps(row,sort_keys=True))
-          with open('bedrock-certification.json','w',encoding='utf-8') as f: json.dump(results,f,indent=2)
-          # Certification workflow itself succeeds if credential was usable enough to attempt all calls;
-          # individual model authorization is represented explicitly in evidence, not hidden by job failure.
-          assert len(results)==len(candidates)
+          with open('bedrock-diagnostic.json','w',encoding='utf-8') as f:
+            json.dump(results,f,indent=2)
           PY
-      - name: Upload certification evidence
+      - name: Upload diagnostic evidence
         uses: actions/upload-artifact@v4
         with:
-          name: bedrock-certification
-          path: bedrock-certification.json
+          name: bedrock-diagnostic
+          path: bedrock-diagnostic.json
           retention-days: 14
