@@ -7,116 +7,124 @@ permissions:
   contents: read
 
 jobs:
-  certify-bedrock-mantle:
+  certify-bedrock-native:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      OPENAI_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
-      OPENAI_BASE_URL: https://bedrock-mantle.us-east-1.api.aws/v1
+      BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
+      MANTLE_ROOT: https://bedrock-mantle.us-east-1.api.aws
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install client
-        run: python -m pip install --upgrade 'openai>=2,<3'
+      - name: Install clients
+        run: python -m pip install --upgrade 'openai>=2,<3' 'requests>=2,<3'
       - name: Verify secret injection
         run: |
           python - <<'PY'
           import os
-          assert os.environ.get('OPENAI_API_KEY'), 'BEDROCK_API_KEY missing/empty'
-          assert os.environ.get('OPENAI_BASE_URL') == 'https://bedrock-mantle.us-east-1.api.aws/v1'
+          assert os.environ.get('BEDROCK_API_KEY'), 'BEDROCK_API_KEY missing/empty'
+          assert os.environ.get('MANTLE_ROOT') == 'https://bedrock-mantle.us-east-1.api.aws'
           print('credential_injected=true')
-          print('mantle_endpoint_configured=true')
+          print('mantle_root_configured=true')
           PY
-      - name: Discover full Mantle inventory and certify text models
+      - name: Provider-native live certification
         run: |
           python - <<'PY'
-          import json, os, re
+          import json, os
+          import requests
           from openai import OpenAI
 
-          client = OpenAI(api_key=os.environ['OPENAI_API_KEY'], base_url=os.environ['OPENAI_BASE_URL'], timeout=90.0)
+          key = os.environ['BEDROCK_API_KEY']
+          root = os.environ['MANTLE_ROOT'].rstrip('/')
           evidence = {
             'credential_available': True,
             'configured': True,
-            'endpoint': os.environ['OPENAI_BASE_URL'],
-            'model_discovery_verified': False,
+            'region': 'us-east-1',
             'tests': [],
             'notes': [
-              'Visibility is not treated as inference success.',
-              'Media/embedding models that require InvokeModel/async APIs are inventory-only in this Mantle workflow and require separate certification.'
+              'Each provider is tested on its AWS-documented native Mantle API surface.',
+              'Model discovery is not treated as inference success.',
+              'Vision/image/video/embedding capabilities require separate real-input/output certification.'
             ]
           }
 
-          models = client.models.list()
-          ids = sorted({m.id for m in models.data})
-          evidence['model_discovery_verified'] = True
-          evidence['model_count'] = len(ids)
-          evidence['models'] = ids
+          def add(role, model, endpoint, ok=False, output=False, match=False, preview='', error=''):
+            row = {
+              'role': role, 'model': model, 'endpoint': endpoint,
+              'live_request_verified': ok,
+              'real_output_verified': output,
+              'output_match': match,
+            }
+            if preview: row['output_preview'] = preview[:200]
+            if error: row['error'] = error[:1200]
+            evidence['tests'].append(row)
+            print(f"test role={role} model={model} live={ok} output={output} match={match}")
+            if error: print(f"error role={role}: {error[:500]}")
 
-          def provider(mid):
-            return mid.split('.', 1)[0] if '.' in mid else 'unknown'
-          groups = {}
-          for mid in ids:
-            groups.setdefault(provider(mid), []).append(mid)
-          evidence['providers'] = groups
+          # 1) Qwen: proven OpenAI-compatible Mantle /v1 surface.
+          qwen_endpoint = root + '/v1'
+          try:
+            qwen = OpenAI(api_key=key, base_url=qwen_endpoint, timeout=90.0)
+            resp = qwen.chat.completions.create(
+              model='qwen.qwen3-coder-next',
+              messages=[{'role':'user','content':'Return exactly this token and nothing else: FALCON_QWEN_OK'}],
+              max_tokens=80, temperature=0,
+            )
+            text = (resp.choices[0].message.content or '').strip()
+            add('qwen_coder','qwen.qwen3-coder-next',qwen_endpoint,True,bool(text),'FALCON_QWEN_OK' in text,text)
+          except Exception as exc:
+            add('qwen_coder','qwen.qwen3-coder-next',qwen_endpoint,error=f'{type(exc).__name__}: {exc}')
 
-          print('model_discovery_verified=true')
-          print('model_count=' + str(len(ids)))
-          print('=== AUTHENTICATED MODEL INVENTORY ===')
-          for p in sorted(groups):
-            print(f'[{p}]')
-            for mid in groups[p]: print(mid)
+          # 2) OpenAI GPT-5.6 Sol: AWS docs specify /openai/v1 and Responses API.
+          openai_endpoint = root + '/openai/v1'
+          try:
+            oa = OpenAI(api_key=key, base_url=openai_endpoint, timeout=120.0)
+            resp = oa.responses.create(
+              model='openai.gpt-5.6-sol',
+              input='Return exactly this token and nothing else: FALCON_OPENAI_OK',
+              max_output_tokens=128,
+            )
+            text = (getattr(resp, 'output_text', None) or '').strip()
+            add('openai_reasoning','openai.gpt-5.6-sol',openai_endpoint,True,bool(text),'FALCON_OPENAI_OK' in text,text)
+          except Exception as exc:
+            add('openai_reasoning','openai.gpt-5.6-sol',openai_endpoint,error=f'{type(exc).__name__}: {exc}')
 
-          # Candidate IDs are selected only if actually returned by authenticated /models.
-          patterns = [
-            ('qwen_coder', [r'^qwen\.qwen3-coder-next$', r'qwen.*coder']),
-            ('openai_reasoning', [r'^openai\.gpt-5\.6-sol$', r'openai.*gpt-5\.6.*sol', r'openai.*gpt-5', r'openai.*gpt-oss']),
-            ('anthropic_reasoning', [r'anthropic.*sonnet', r'anthropic.*opus', r'anthropic.*haiku']),
-            ('vision_candidate', [r'qwen.*vl', r'nvidia.*vl', r'kimi.*2\.5']),
-          ]
+          # 3) Claude Sonnet 5: AWS docs specify Anthropic Messages API + x-api-key + version header.
+          claude_endpoint = root + '/anthropic/v1/messages'
+          try:
+            r = requests.post(
+              claude_endpoint,
+              headers={
+                'x-api-key': key,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json',
+              },
+              json={
+                'model': 'anthropic.claude-sonnet-5',
+                'max_tokens': 128,
+                'temperature': 0,
+                'messages': [{'role':'user','content':'Return exactly this token and nothing else: FALCON_CLAUDE_OK'}],
+              },
+              timeout=120,
+            )
+            if not r.ok:
+              raise RuntimeError(f'HTTP {r.status_code}: {r.text[:900]}')
+            data = r.json()
+            text = ''.join(x.get('text','') for x in data.get('content',[]) if x.get('type') == 'text').strip()
+            add('anthropic_reasoning','anthropic.claude-sonnet-5',claude_endpoint,True,bool(text),'FALCON_CLAUDE_OK' in text,text)
+          except Exception as exc:
+            add('anthropic_reasoning','anthropic.claude-sonnet-5',claude_endpoint,error=f'{type(exc).__name__}: {exc}')
 
-          selected = {}
-          for role, pats in patterns:
-            for pat in pats:
-              hit = next((mid for mid in ids if re.search(pat, mid, re.I)), None)
-              if hit:
-                selected[role] = hit
-                break
-          evidence['selected_candidates'] = selected
-          print('selected_candidates=' + json.dumps(selected, sort_keys=True))
-
-          # Safe text-only smoke tests. Vision semantics get a separate real-image test later.
-          for role in ('qwen_coder', 'openai_reasoning', 'anthropic_reasoning'):
-            mid = selected.get(role)
-            if not mid:
-              evidence['tests'].append({'role': role, 'visible': False, 'live_request_verified': False, 'real_output_verified': False})
-              continue
-            result = {'role': role, 'model': mid, 'visible': True, 'live_request_verified': False, 'real_output_verified': False}
-            try:
-              response = client.chat.completions.create(
-                model=mid,
-                messages=[{'role':'user','content':'Return exactly this token and nothing else: FALCON_CERT_OK'}],
-                max_tokens=80,
-                temperature=0,
-              )
-              text = (response.choices[0].message.content or '').strip()
-              result['live_request_verified'] = True
-              result['real_output_verified'] = bool(text)
-              result['output_match'] = 'FALCON_CERT_OK' in text
-              result['output_preview'] = text[:160]
-            except Exception as exc:
-              result['error_type'] = type(exc).__name__
-              result['error'] = str(exc)[:800]
-            evidence['tests'].append(result)
-            print(f"test role={role} model={mid} live={result['live_request_verified']} output={result['real_output_verified']} match={result.get('output_match', False)}")
-
-          with open('bedrock-capability-inventory.json','w',encoding='utf-8') as f:
+          evidence['all_three_live'] = all(x['live_request_verified'] for x in evidence['tests'])
+          evidence['all_three_real_output'] = all(x['real_output_verified'] for x in evidence['tests'])
+          with open('bedrock-provider-native-certification.json','w',encoding='utf-8') as f:
             json.dump(evidence,f,indent=2)
           PY
       - name: Upload certification evidence
         uses: actions/upload-artifact@v4
         with:
-          name: bedrock-capability-inventory
-          path: bedrock-capability-inventory.json
+          name: bedrock-provider-native-certification
+          path: bedrock-provider-native-certification.json
           retention-days: 14
