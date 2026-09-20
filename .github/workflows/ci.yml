@@ -16,16 +16,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Compile
-        run: python -m compileall -q .
-      - name: Smoke test
-        run: python falcon.py --self-test
-      - name: Check Cloudflare gateway syntax
-        run: node --check cloudflare/src/index.js
-      - name: Build production container
-        run: docker build -t falcon-ci .
+        with: {python-version: '3.12'}
+      - run: python -m compileall -q .
+      - run: python falcon.py --self-test
+      - run: node --check cloudflare/src/index.js
+      - run: docker build -t falcon-ci .
 
   tests:
     runs-on: ubuntu-latest
@@ -47,6 +42,7 @@ jobs:
           - test_multi_provider_intelligence.py
           - test_observability.py
           - test_production_hardening.py
+          - test_reporting_integrity.py
           - test_service.py
           - test_task_runner.py
           - test_telegram.py
@@ -55,10 +51,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Run ${{ matrix.file }}
-        run: python -m unittest discover -s tests -p '${{ matrix.file }}' -v
+        with: {python-version: '3.12'}
+      - run: python -m unittest discover -s tests -p '${{ matrix.file }}' -v
 
   production_hardening:
     runs-on: ubuntu-latest
@@ -66,18 +60,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: Governed execution, cancellation and failure isolation
-        run: python -m unittest tests.test_production_hardening tests.test_execution_cancellation tests.test_multi_provider_intelligence -v
-      - name: Production hardening gate
-        run: echo PRODUCTION_HARDENING_STATUS=PASS
+      - run: python -m unittest tests.test_production_hardening tests.test_execution_cancellation tests.test_multi_provider_intelligence tests.test_reporting_integrity -v
+      - run: echo PRODUCTION_HARDENING_STATUS=PASS
 
   kra3_scheduler_heartbeat:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
+        with: {python-version: '3.12'}
       - name: KRA-3 autonomous scheduler acceptance
         run: |
           python - <<'PY'
@@ -104,8 +95,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: KRA-4 governed web adapter acceptance
-        run: python -m unittest tests.test_service tests.test_verification -v
+      - run: python -m unittest tests.test_service tests.test_verification -v
       - run: echo KRA4_STATUS=PASS
 
   kra5_general_execution:
@@ -114,8 +104,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: KRA-5 governed execution acceptance
-        run: python -m unittest tests.test_task_runner tests.test_execution_cancellation -v
+      - run: python -m unittest tests.test_task_runner tests.test_execution_cancellation -v
       - run: echo KRA5_STATUS=PASS
 
   kra6_live_control_observability:
@@ -124,8 +113,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: KRA-6 observability acceptance
-        run: python -m unittest tests.test_observability tests.test_mission_control -v
+      - run: python -m unittest tests.test_observability tests.test_mission_control tests.test_reporting_integrity -v
       - run: echo KRA6_STATUS=PASS
 
   kra7_project_ownership:
@@ -134,6 +122,5 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - name: KRA-7 project ownership autonomy acceptance
-        run: python -m unittest tests.test_autonomous_acceptance -v
+      - run: python -m unittest tests.test_autonomous_acceptance -v
       - run: echo KRA7_STATUS=PASS
