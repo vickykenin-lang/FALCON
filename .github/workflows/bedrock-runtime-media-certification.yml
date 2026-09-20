@@ -1,0 +1,30 @@
+name: Bedrock Runtime Media Certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  certify-runtime-media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
+      BEDROCK_RUNTIME_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime clients
+        run: python -m pip install --upgrade 'boto3>=1.42' 'pillow>=10,<13'
+      - name: Certify Runtime media and embeddings
+        run: python scripts/bedrock_runtime_media_cert.py
+      - name: Upload evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: bedrock-runtime-media-certification
+          path: bedrock-runtime-media-cert.json
+          retention-days: 14
