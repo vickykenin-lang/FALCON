@@ -58,3 +58,70 @@ jobs:
           python-version: '3.12'
       - name: Run ${{ matrix.file }}
         run: python -m unittest discover -s tests -p '${{ matrix.file }}' -v
+
+  kra3_scheduler_heartbeat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: KRA-3 autonomous scheduler acceptance
+        run: |
+          python - <<'PY'
+          import tempfile
+          from datetime import datetime, timedelta, timezone
+          from pathlib import Path
+          from scheduler.engine import Schedule, Scheduler
+          root=Path(tempfile.mkdtemp()); state=root/'schedules.json'; now=datetime.now(timezone.utc); fired=[]
+          first=Scheduler(str(state), on_due=lambda item:fired.append(item.schedule_id))
+          item=first.add(Schedule(objective='KRA3 CI canary', mode='RECURRING', schedule_expression='every:1'), now=now)
+          restored=Scheduler(str(state), on_due=lambda x:fired.append(x.schedule_id))
+          triggered=restored.tick(now=now+timedelta(seconds=2))
+          assert len(triggered)==1 and fired[-1]==item.schedule_id
+          resumed=Scheduler(str(state), on_due=lambda x:None)
+          assert resumed.schedules[item.schedule_id].last_run_at is not None
+          assert resumed.schedules[item.schedule_id].enabled is True
+          print('KRA3_STATUS=PASS')
+          PY
+      - run: python -m unittest tests.test_v1 tests.test_durable_state -v
+
+  kra4_web_adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: KRA-4 governed web adapter acceptance
+        run: python -m unittest tests.test_service tests.test_verification -v
+      - run: echo KRA4_STATUS=PASS
+
+  kra5_general_execution:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: KRA-5 governed execution acceptance
+        run: python -m unittest tests.test_task_runner tests.test_execution_cancellation -v
+      - run: echo KRA5_STATUS=PASS
+
+  kra6_live_control_observability:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: KRA-6 observability acceptance
+        run: python -m unittest tests.test_observability tests.test_mission_control -v
+      - run: echo KRA6_STATUS=PASS
+
+  kra7_project_ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: KRA-7 project ownership autonomy acceptance
+        run: python -m unittest tests.test_autonomous_acceptance -v
+      - run: echo KRA7_STATUS=PASS
