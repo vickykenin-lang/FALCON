@@ -7,78 +7,93 @@ permissions:
   contents: read
 
 jobs:
-  diagnose-bedrock:
+  certify-bedrock-mantle:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.BEDROCK_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
+      OPENAI_BASE_URL: https://bedrock-mantle.us-east-1.api.aws/v1
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install current Bedrock SDK
-        run: python -m pip install --upgrade 'boto3>=1.43,<2'
+      - name: Install OpenAI client
+        run: python -m pip install --upgrade 'openai>=2,<3'
       - name: Verify secret injection
         run: |
           python - <<'PY'
           import os
-          assert os.environ.get('AWS_BEARER_TOKEN_BEDROCK'), 'BEDROCK_API_KEY missing/empty'
+          assert os.environ.get('OPENAI_API_KEY'), 'BEDROCK_API_KEY missing/empty'
+          assert os.environ.get('OPENAI_BASE_URL') == 'https://bedrock-mantle.us-east-1.api.aws/v1'
           print('credential_injected=true')
+          print('mantle_endpoint_configured=true')
           PY
-      - name: Diagnose regions and live model access
+      - name: Discover authenticated Mantle models and run live inference
         run: |
           python - <<'PY'
-          import json, boto3
-          from botocore.exceptions import ClientError
+          import json, os
+          from openai import OpenAI
 
-          # Mumbai controls tell us whether the key itself works in the region where it was expected to be created.
-          # US/Sydney controls distinguish key-region restrictions from model/access failures.
-          candidates = [
-            ('mumbai_qwen32','ap-south-1','qwen.qwen3-32b-v1:0'),
-            ('mumbai_qwen_coder30','ap-south-1','qwen.qwen3-coder-30b-a3b-v1:0'),
-            ('mumbai_qwen_coder480','ap-south-1','qwen.qwen3-coder-480b-a35b-v1:0'),
-            ('mumbai_qwen_next80','ap-south-1','qwen.qwen3-next-80b-a3b'),
-            ('mumbai_qwen_vl_text_control','ap-south-1','qwen.qwen3-vl-235b-a22b'),
-            ('us_qwen_coder_next','us-east-1','qwen.qwen3-coder-next'),
-            ('sydney_qwen_coder_next','ap-southeast-2','qwen.qwen3-coder-next'),
-            ('mumbai_openai_oss20','ap-south-1','openai.gpt-oss-20b-1:0'),
-            ('mumbai_deepseek_v32','ap-south-1','deepseek.v3.2'),
-            ('mumbai_claude_haiku3','ap-south-1','anthropic.claude-3-haiku-20240307-v1:0'),
-            ('us_claude_sonnet46','us-east-1','us.anthropic.claude-sonnet-4-6'),
-          ]
-          results=[]
-          for name,region,model in candidates:
-            row={'name':name,'region':region,'model':model,'credential_available':True,'configured':True,'request_attempted':True,'live_request_verified':False,'real_output_verified':False}
-            try:
-              client=boto3.client('bedrock-runtime',region_name=region)
-              response=client.converse(
-                modelId=model,
-                messages=[{'role':'user','content':[{'text':'Reply with exactly: FALCON_BEDROCK_OK'}]}],
-                inferenceConfig={'maxTokens':64,'temperature':0},
-              )
-              text=''.join(x.get('text','') for x in response.get('output',{}).get('message',{}).get('content',[]) if isinstance(x,dict)).strip()
-              row['live_request_verified']=True
-              row['real_output_verified']=bool(text)
-              row['output_match']='FALCON_BEDROCK_OK' in text
-              row['output_preview']=text[:120]
-            except Exception as exc:
-              row['error_type']=type(exc).__name__
-              if isinstance(exc,ClientError):
-                err=exc.response.get('Error',{})
-                row['error_code']=err.get('Code')
-                row['error_message']=str(err.get('Message',''))[:500]
-                row['http_status']=exc.response.get('ResponseMetadata',{}).get('HTTPStatusCode')
+          client = OpenAI(
+              api_key=os.environ['OPENAI_API_KEY'],
+              base_url=os.environ['OPENAI_BASE_URL'],
+              timeout=60.0,
+          )
+          evidence = {
+              'credential_available': True,
+              'configured': True,
+              'endpoint': os.environ['OPENAI_BASE_URL'],
+              'model_discovery_attempted': True,
+              'model_discovery_verified': False,
+              'qwen_coder_next_visible': False,
+              'live_request_verified': False,
+              'real_output_verified': False,
+          }
+          try:
+              models = client.models.list()
+              ids = sorted({m.id for m in models.data})
+              evidence['model_discovery_verified'] = True
+              evidence['model_count'] = len(ids)
+              evidence['models'] = ids
+              evidence['qwen_coder_next_visible'] = 'qwen.qwen3-coder-next' in ids
+              print('model_discovery_verified=true')
+              print('model_count=' + str(len(ids)))
+              print('qwen_coder_next_visible=' + str(evidence['qwen_coder_next_visible']).lower())
+
+              preferred = ['qwen.qwen3-coder-next', 'zai.glm-4.7-flash']
+              selected = next((m for m in preferred if m in ids), None)
+              evidence['selected_model'] = selected
+              if selected:
+                  response = client.chat.completions.create(
+                      model=selected,
+                      messages=[{'role':'user','content':'Reply with exactly: FALCON_BEDROCK_OK'}],
+                      max_tokens=64,
+                      temperature=0,
+                  )
+                  text = (response.choices[0].message.content or '').strip()
+                  evidence['live_request_verified'] = True
+                  evidence['real_output_verified'] = bool(text)
+                  evidence['output_match'] = 'FALCON_BEDROCK_OK' in text
+                  evidence['output_preview'] = text[:120]
+                  print('selected_model=' + selected)
+                  print('live_request_verified=true')
+                  print('real_output_verified=' + str(bool(text)).lower())
+                  print('output_match=' + str(evidence['output_match']).lower())
               else:
-                row['error_message']=str(exc)[:500]
-            results.append(row)
-            print(json.dumps(row,sort_keys=True))
-          with open('bedrock-diagnostic.json','w',encoding='utf-8') as f:
-            json.dump(results,f,indent=2)
+                  evidence['error'] = 'no_preferred_model_visible'
+                  print('selected_model=none')
+          except Exception as exc:
+              evidence['error_type'] = type(exc).__name__
+              evidence['error'] = str(exc)[:1000]
+              print('mantle_error_type=' + type(exc).__name__)
+              print('mantle_error=' + str(exc)[:500])
+          with open('bedrock-mantle-certification.json','w',encoding='utf-8') as f:
+              json.dump(evidence,f,indent=2)
           PY
-      - name: Upload diagnostic evidence
+      - name: Upload certification evidence
         uses: actions/upload-artifact@v4
         with:
-          name: bedrock-diagnostic
-          path: bedrock-diagnostic.json
+          name: bedrock-mantle-certification
+          path: bedrock-mantle-certification.json
           retention-days: 14
