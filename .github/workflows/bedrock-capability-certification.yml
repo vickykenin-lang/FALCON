@@ -51,7 +51,7 @@ jobs:
           chat('primary_coder','qwen.qwen3-coder-next','FALCON_QWEN_OK')
           chat('reasoning_control','qwen.qwen3-32b','FALCON_QWEN32_OK')
           chat('openai_oss_reasoning','openai.gpt-oss-120b','FALCON_GPTOSS_OK')
-          chat('deepseek_reasoning','deepseek.deepseek-v3.2','FALCON_DEEPSEEK_OK')
+          chat('deepseek_reasoning','deepseek.v3.2','FALCON_DEEPSEEK_OK')
           chat('kimi_reasoning','moonshotai.kimi-k2.5','FALCON_KIMI_OK')
           try:
             oa=OpenAI(api_key=key,base_url=root+'/openai/v1',timeout=120.0)
