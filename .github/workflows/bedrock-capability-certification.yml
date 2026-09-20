@@ -9,7 +9,7 @@ permissions:
 jobs:
   certify-bedrock-mantle:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       OPENAI_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
       OPENAI_BASE_URL: https://bedrock-mantle.us-east-1.api.aws/v1
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install OpenAI client
+      - name: Install client
         run: python -m pip install --upgrade 'openai>=2,<3'
       - name: Verify secret injection
         run: |
@@ -29,71 +29,94 @@ jobs:
           print('credential_injected=true')
           print('mantle_endpoint_configured=true')
           PY
-      - name: Discover authenticated Mantle models and run live inference
+      - name: Discover full Mantle inventory and certify text models
         run: |
           python - <<'PY'
-          import json, os
+          import json, os, re
           from openai import OpenAI
 
-          client = OpenAI(
-              api_key=os.environ['OPENAI_API_KEY'],
-              base_url=os.environ['OPENAI_BASE_URL'],
-              timeout=60.0,
-          )
+          client = OpenAI(api_key=os.environ['OPENAI_API_KEY'], base_url=os.environ['OPENAI_BASE_URL'], timeout=90.0)
           evidence = {
-              'credential_available': True,
-              'configured': True,
-              'endpoint': os.environ['OPENAI_BASE_URL'],
-              'model_discovery_attempted': True,
-              'model_discovery_verified': False,
-              'qwen_coder_next_visible': False,
-              'live_request_verified': False,
-              'real_output_verified': False,
+            'credential_available': True,
+            'configured': True,
+            'endpoint': os.environ['OPENAI_BASE_URL'],
+            'model_discovery_verified': False,
+            'tests': [],
+            'notes': [
+              'Visibility is not treated as inference success.',
+              'Media/embedding models that require InvokeModel/async APIs are inventory-only in this Mantle workflow and require separate certification.'
+            ]
           }
-          try:
-              models = client.models.list()
-              ids = sorted({m.id for m in models.data})
-              evidence['model_discovery_verified'] = True
-              evidence['model_count'] = len(ids)
-              evidence['models'] = ids
-              evidence['qwen_coder_next_visible'] = 'qwen.qwen3-coder-next' in ids
-              print('model_discovery_verified=true')
-              print('model_count=' + str(len(ids)))
-              print('qwen_coder_next_visible=' + str(evidence['qwen_coder_next_visible']).lower())
 
-              preferred = ['qwen.qwen3-coder-next', 'zai.glm-4.7-flash']
-              selected = next((m for m in preferred if m in ids), None)
-              evidence['selected_model'] = selected
-              if selected:
-                  response = client.chat.completions.create(
-                      model=selected,
-                      messages=[{'role':'user','content':'Reply with exactly: FALCON_BEDROCK_OK'}],
-                      max_tokens=64,
-                      temperature=0,
-                  )
-                  text = (response.choices[0].message.content or '').strip()
-                  evidence['live_request_verified'] = True
-                  evidence['real_output_verified'] = bool(text)
-                  evidence['output_match'] = 'FALCON_BEDROCK_OK' in text
-                  evidence['output_preview'] = text[:120]
-                  print('selected_model=' + selected)
-                  print('live_request_verified=true')
-                  print('real_output_verified=' + str(bool(text)).lower())
-                  print('output_match=' + str(evidence['output_match']).lower())
-              else:
-                  evidence['error'] = 'no_preferred_model_visible'
-                  print('selected_model=none')
-          except Exception as exc:
-              evidence['error_type'] = type(exc).__name__
-              evidence['error'] = str(exc)[:1000]
-              print('mantle_error_type=' + type(exc).__name__)
-              print('mantle_error=' + str(exc)[:500])
-          with open('bedrock-mantle-certification.json','w',encoding='utf-8') as f:
-              json.dump(evidence,f,indent=2)
+          models = client.models.list()
+          ids = sorted({m.id for m in models.data})
+          evidence['model_discovery_verified'] = True
+          evidence['model_count'] = len(ids)
+          evidence['models'] = ids
+
+          def provider(mid):
+            return mid.split('.', 1)[0] if '.' in mid else 'unknown'
+          groups = {}
+          for mid in ids:
+            groups.setdefault(provider(mid), []).append(mid)
+          evidence['providers'] = groups
+
+          print('model_discovery_verified=true')
+          print('model_count=' + str(len(ids)))
+          print('=== AUTHENTICATED MODEL INVENTORY ===')
+          for p in sorted(groups):
+            print(f'[{p}]')
+            for mid in groups[p]: print(mid)
+
+          # Candidate IDs are selected only if actually returned by authenticated /models.
+          patterns = [
+            ('qwen_coder', [r'^qwen\.qwen3-coder-next$', r'qwen.*coder']),
+            ('openai_reasoning', [r'^openai\.gpt-5\.6-sol$', r'openai.*gpt-5\.6.*sol', r'openai.*gpt-5', r'openai.*gpt-oss']),
+            ('anthropic_reasoning', [r'anthropic.*sonnet', r'anthropic.*opus', r'anthropic.*haiku']),
+            ('vision_candidate', [r'qwen.*vl', r'nvidia.*vl', r'kimi.*2\.5']),
+          ]
+
+          selected = {}
+          for role, pats in patterns:
+            for pat in pats:
+              hit = next((mid for mid in ids if re.search(pat, mid, re.I)), None)
+              if hit:
+                selected[role] = hit
+                break
+          evidence['selected_candidates'] = selected
+          print('selected_candidates=' + json.dumps(selected, sort_keys=True))
+
+          # Safe text-only smoke tests. Vision semantics get a separate real-image test later.
+          for role in ('qwen_coder', 'openai_reasoning', 'anthropic_reasoning'):
+            mid = selected.get(role)
+            if not mid:
+              evidence['tests'].append({'role': role, 'visible': False, 'live_request_verified': False, 'real_output_verified': False})
+              continue
+            result = {'role': role, 'model': mid, 'visible': True, 'live_request_verified': False, 'real_output_verified': False}
+            try:
+              response = client.chat.completions.create(
+                model=mid,
+                messages=[{'role':'user','content':'Return exactly this token and nothing else: FALCON_CERT_OK'}],
+                max_tokens=80,
+                temperature=0,
+              )
+              text = (response.choices[0].message.content or '').strip()
+              result['live_request_verified'] = True
+              result['real_output_verified'] = bool(text)
+              result['output_match'] = 'FALCON_CERT_OK' in text
+              result['output_preview'] = text[:160]
+            except Exception as exc:
+              result['error_type'] = type(exc).__name__
+              result['error'] = str(exc)[:800]
+            evidence['tests'].append(result)
+            print(f"test role={role} model={mid} live={result['live_request_verified']} output={result['real_output_verified']} match={result.get('output_match', False)}")
+
+          with open('bedrock-capability-inventory.json','w',encoding='utf-8') as f:
+            json.dump(evidence,f,indent=2)
           PY
       - name: Upload certification evidence
         uses: actions/upload-artifact@v4
         with:
-          name: bedrock-mantle-certification
-          path: bedrock-mantle-certification.json
+          name: bedrock-capability-inventory
+          path: bedrock-capability-inventory.json
           retention-days: 14
