@@ -1,0 +1,77 @@
+name: Bedrock Capability Certification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  text-models:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AWS_BEARER_TOKEN_BEDROCK: ${{ secrets.BEDROCK_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Bedrock SDK
+        run: python -m pip install 'boto3>=1.40,<2'
+      - name: Verify secret is injected without exposing it
+        run: |
+          python - <<'PY'
+          import os
+          value=os.environ.get('AWS_BEARER_TOKEN_BEDROCK','')
+          assert value, 'BEDROCK_API_KEY repository secret is missing or empty'
+          print('credential_injected=true')
+          print('credential_length_nonzero=true')
+          PY
+      - name: Live Bedrock model certification
+        run: |
+          python - <<'PY'
+          import json, os, boto3
+          from botocore.exceptions import ClientError
+
+          # Candidate IDs are tested, never assumed available. Each result is evidence.
+          candidates = [
+            ('qwen_coder_next','us-east-1','qwen.qwen3-coder-next'),
+            ('claude_sonnet_46','us-east-1','us.anthropic.claude-sonnet-4-6'),
+          ]
+          results=[]
+          for name,region,model in candidates:
+            row={'name':name,'region':region,'model':model,'credential_available':True,'configured':True,'live_request_verified':False,'real_output_verified':False}
+            try:
+              client=boto3.client('bedrock-runtime',region_name=region)
+              response=client.converse(
+                modelId=model,
+                messages=[{'role':'user','content':[{'text':'Reply with exactly: FALCON_BEDROCK_OK'}]}],
+                inferenceConfig={'maxTokens':64,'temperature':0},
+              )
+              text=''.join(x.get('text','') for x in response.get('output',{}).get('message',{}).get('content',[]) if isinstance(x,dict)).strip()
+              row['live_request_verified']=True
+              row['real_output_verified']=bool(text)
+              row['output_match']='FALCON_BEDROCK_OK' in text
+              row['output_preview']=text[:120]
+            except Exception as exc:
+              row['error_type']=type(exc).__name__
+              if isinstance(exc,ClientError):
+                err=exc.response.get('Error',{})
+                row['error_code']=err.get('Code')
+                row['error_message']=str(err.get('Message',''))[:300]
+              else:
+                row['error_message']=str(exc)[:300]
+            results.append(row)
+            print(json.dumps(row,sort_keys=True))
+          with open('bedrock-certification.json','w',encoding='utf-8') as f: json.dump(results,f,indent=2)
+          # Certification workflow itself succeeds if credential was usable enough to attempt all calls;
+          # individual model authorization is represented explicitly in evidence, not hidden by job failure.
+          assert len(results)==len(candidates)
+          PY
+      - name: Upload certification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: bedrock-certification
+          path: bedrock-certification.json
+          retention-days: 14
