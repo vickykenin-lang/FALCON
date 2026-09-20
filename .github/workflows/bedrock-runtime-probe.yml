@@ -1,0 +1,38 @@
+name: Bedrock Runtime Authorization Probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
+      BEDROCK_RUNTIME_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install AWS SDK
+        run: python -m pip install --upgrade 'boto3>=1.43'
+      - name: Verify secret injection
+        run: |
+          python - <<'PY'
+          import os
+          assert os.environ.get('BEDROCK_API_KEY'), 'BEDROCK_API_KEY missing/empty'
+          print('credential_available=true')
+          print('region=us-east-1')
+          PY
+      - name: Probe standard Bedrock and Runtime APIs
+        run: python scripts/bedrock_runtime_probe.py
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: bedrock-runtime-authorization-probe
+          path: bedrock-runtime-probe.json
+          retention-days: 14
