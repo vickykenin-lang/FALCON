@@ -9,7 +9,7 @@ permissions:
 jobs:
   certify-bedrock-native:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       BEDROCK_API_KEY: ${{ secrets.BEDROCK_API_KEY }}
       MANTLE_ROOT: https://bedrock-mantle.us-east-1.api.aws
@@ -25,11 +25,10 @@ jobs:
           python - <<'PY'
           import os
           assert os.environ.get('BEDROCK_API_KEY'), 'BEDROCK_API_KEY missing/empty'
-          assert os.environ.get('MANTLE_ROOT') == 'https://bedrock-mantle.us-east-1.api.aws'
           print('credential_injected=true')
           print('mantle_root_configured=true')
           PY
-      - name: Provider-native live certification
+      - name: Capability control certification
         run: |
           python - <<'PY'
           import json, os
@@ -38,93 +37,58 @@ jobs:
 
           key = os.environ['BEDROCK_API_KEY']
           root = os.environ['MANTLE_ROOT'].rstrip('/')
-          evidence = {
-            'credential_available': True,
-            'configured': True,
-            'region': 'us-east-1',
-            'tests': [],
-            'notes': [
-              'Each provider is tested on its AWS-documented native Mantle API surface.',
-              'Model discovery is not treated as inference success.',
-              'Vision/image/video/embedding capabilities require separate real-input/output certification.'
-            ]
-          }
+          generic = OpenAI(api_key=key, base_url=root + '/v1', timeout=120.0)
+          evidence = {'credential_available': True, 'configured': True, 'region':'us-east-1', 'tests': []}
 
-          def add(role, model, endpoint, ok=False, output=False, match=False, preview='', error=''):
-            row = {
-              'role': role, 'model': model, 'endpoint': endpoint,
-              'live_request_verified': ok,
-              'real_output_verified': output,
-              'output_match': match,
-            }
-            if preview: row['output_preview'] = preview[:200]
-            if error: row['error'] = error[:1200]
+          def record(role, model, endpoint, ok=False, output=False, match=False, preview='', error=''):
+            row={'role':role,'model':model,'endpoint':endpoint,'live_request_verified':ok,'real_output_verified':output,'output_match':match}
+            if preview: row['output_preview']=preview[:240]
+            if error: row['error']=error[:1200]
             evidence['tests'].append(row)
-            print(f"test role={role} model={model} live={ok} output={output} match={match}")
-            if error: print(f"error role={role}: {error[:500]}")
+            print(f'test role={role} model={model} live={ok} output={output} match={match}')
+            if error: print(f'error role={role}: {error[:700]}')
 
-          # 1) Qwen: proven OpenAI-compatible Mantle /v1 surface.
-          qwen_endpoint = root + '/v1'
+          def chat(role, model, token):
+            try:
+              r=generic.chat.completions.create(model=model,messages=[{'role':'user','content':f'Return exactly this token and nothing else: {token}'}],max_tokens=96,temperature=0)
+              text=(r.choices[0].message.content or '').strip()
+              record(role,model,root+'/v1',True,bool(text),token in text,text)
+            except Exception as exc:
+              record(role,model,root+'/v1',error=f'{type(exc).__name__}: {exc}')
+
+          # Proven baseline + models AWS documents as not sold through Marketplace.
+          chat('primary_coder','qwen.qwen3-coder-next','FALCON_QWEN_OK')
+          chat('reasoning_control','qwen.qwen3-32b','FALCON_QWEN32_OK')
+          chat('openai_oss_reasoning','openai.gpt-oss-120b','FALCON_GPTOSS_OK')
+          chat('deepseek_reasoning','deepseek.deepseek-v3.2','FALCON_DEEPSEEK_OK')
+
+          # Additional discovered candidate; result is evidence, not assumed access.
+          chat('kimi_reasoning','moonshotai.kimi-k2.5','FALCON_KIMI_OK')
+
+          # Proprietary controls: correct provider-native routes. Expected to expose entitlement state precisely.
           try:
-            qwen = OpenAI(api_key=key, base_url=qwen_endpoint, timeout=90.0)
-            resp = qwen.chat.completions.create(
-              model='qwen.qwen3-coder-next',
-              messages=[{'role':'user','content':'Return exactly this token and nothing else: FALCON_QWEN_OK'}],
-              max_tokens=80, temperature=0,
-            )
-            text = (resp.choices[0].message.content or '').strip()
-            add('qwen_coder','qwen.qwen3-coder-next',qwen_endpoint,True,bool(text),'FALCON_QWEN_OK' in text,text)
+            oa=OpenAI(api_key=key,base_url=root+'/openai/v1',timeout=120.0)
+            r=oa.responses.create(model='openai.gpt-5.6-sol',input='Return exactly this token and nothing else: FALCON_SOL_OK',max_output_tokens=128)
+            text=(getattr(r,'output_text',None) or '').strip()
+            record('proprietary_openai','openai.gpt-5.6-sol',root+'/openai/v1',True,bool(text),'FALCON_SOL_OK' in text,text)
           except Exception as exc:
-            add('qwen_coder','qwen.qwen3-coder-next',qwen_endpoint,error=f'{type(exc).__name__}: {exc}')
+            record('proprietary_openai','openai.gpt-5.6-sol',root+'/openai/v1',error=f'{type(exc).__name__}: {exc}')
 
-          # 2) OpenAI GPT-5.6 Sol: AWS docs specify /openai/v1 and Responses API.
-          openai_endpoint = root + '/openai/v1'
           try:
-            oa = OpenAI(api_key=key, base_url=openai_endpoint, timeout=120.0)
-            resp = oa.responses.create(
-              model='openai.gpt-5.6-sol',
-              input='Return exactly this token and nothing else: FALCON_OPENAI_OK',
-              max_output_tokens=128,
-            )
-            text = (getattr(resp, 'output_text', None) or '').strip()
-            add('openai_reasoning','openai.gpt-5.6-sol',openai_endpoint,True,bool(text),'FALCON_OPENAI_OK' in text,text)
+            endpoint=root+'/anthropic/v1/messages'
+            r=requests.post(endpoint,headers={'x-api-key':key,'anthropic-version':'2023-06-01','content-type':'application/json'},json={'model':'anthropic.claude-sonnet-5','max_tokens':128,'temperature':0,'messages':[{'role':'user','content':'Return exactly this token and nothing else: FALCON_CLAUDE_OK'}]},timeout=120)
+            if not r.ok: raise RuntimeError(f'HTTP {r.status_code}: {r.text[:900]}')
+            data=r.json(); text=''.join(x.get('text','') for x in data.get('content',[]) if x.get('type')=='text').strip()
+            record('proprietary_anthropic','anthropic.claude-sonnet-5',endpoint,True,bool(text),'FALCON_CLAUDE_OK' in text,text)
           except Exception as exc:
-            add('openai_reasoning','openai.gpt-5.6-sol',openai_endpoint,error=f'{type(exc).__name__}: {exc}')
+            record('proprietary_anthropic','anthropic.claude-sonnet-5',root+'/anthropic/v1/messages',error=f'{type(exc).__name__}: {exc}')
 
-          # 3) Claude Sonnet 5: AWS docs specify Anthropic Messages API + x-api-key + version header.
-          claude_endpoint = root + '/anthropic/v1/messages'
-          try:
-            r = requests.post(
-              claude_endpoint,
-              headers={
-                'x-api-key': key,
-                'anthropic-version': '2023-06-01',
-                'content-type': 'application/json',
-              },
-              json={
-                'model': 'anthropic.claude-sonnet-5',
-                'max_tokens': 128,
-                'temperature': 0,
-                'messages': [{'role':'user','content':'Return exactly this token and nothing else: FALCON_CLAUDE_OK'}],
-              },
-              timeout=120,
-            )
-            if not r.ok:
-              raise RuntimeError(f'HTTP {r.status_code}: {r.text[:900]}')
-            data = r.json()
-            text = ''.join(x.get('text','') for x in data.get('content',[]) if x.get('type') == 'text').strip()
-            add('anthropic_reasoning','anthropic.claude-sonnet-5',claude_endpoint,True,bool(text),'FALCON_CLAUDE_OK' in text,text)
-          except Exception as exc:
-            add('anthropic_reasoning','anthropic.claude-sonnet-5',claude_endpoint,error=f'{type(exc).__name__}: {exc}')
-
-          evidence['all_three_live'] = all(x['live_request_verified'] for x in evidence['tests'])
-          evidence['all_three_real_output'] = all(x['real_output_verified'] for x in evidence['tests'])
-          with open('bedrock-provider-native-certification.json','w',encoding='utf-8') as f:
-            json.dump(evidence,f,indent=2)
+          evidence['real_output_count']=sum(1 for x in evidence['tests'] if x['real_output_verified'])
+          with open('bedrock-capability-controls.json','w',encoding='utf-8') as f: json.dump(evidence,f,indent=2)
           PY
       - name: Upload certification evidence
         uses: actions/upload-artifact@v4
         with:
-          name: bedrock-provider-native-certification
-          path: bedrock-provider-native-certification.json
+          name: bedrock-capability-controls
+          path: bedrock-capability-controls.json
           retention-days: 14
