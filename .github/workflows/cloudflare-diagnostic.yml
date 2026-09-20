@@ -53,9 +53,9 @@ jobs:
               with urlopen(Request(worker+'/telegram/webhook',data=payload,method='POST',headers=headers),timeout=20) as r: accepted.append(json.loads(r.read().decode()))
           evidence['duplicate_same_update_submitted']=True
           evidence['webhook_responses']=[{'queued':bool(x.get('queued')),'duplicate':bool(x.get('duplicate'))} for x in accepted]
+          evidence['ingress_dedupe_verified']=len(accepted)==2 and accepted[0].get('queued') is True and accepted[0].get('duplicate') is False and accepted[1].get('queued') is False and accepted[1].get('duplicate') is True
 
-          matching=[]
-          deadline=time.time()+120
+          matching=[]; deadline=time.time()+120
           while time.time()<deadline:
               matching=[]
               for run in gh_runs():
@@ -70,8 +70,8 @@ jobs:
           if matching:
               run=matching[0]; evidence['cloudflare_task_run_id']=run.get('id'); evidence['cloudflare_task_status']=run.get('status'); evidence['cloudflare_task_conclusion']=run.get('conclusion')
           evidence['live_mission_execution_verified']=bool(matching) and matching[0].get('conclusion')=='success'
-          evidence['telegram_return_step_expected']=evidence['live_mission_execution_verified']
           write(); print(json.dumps(evidence))
+          assert evidence['ingress_dedupe_verified'],'worker_ingress_dedupe_not_live'
           assert evidence['duplicate_dispatch_prevented'],'duplicate_update_dispatched_more_than_once'
           assert evidence['live_mission_execution_verified'],'live_cloudflare_task_not_successful'
           PY
