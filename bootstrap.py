@@ -5,6 +5,7 @@ from autonomic.driver import BrainDriver
 from autonomic.runtime import Runtime
 from autonomic.state import HttpMissionStateBackend, JsonMissionStateBackend
 from brain.engine import Brain
+from brain.providers.bedrock import BedrockProvider
 from brain.providers.deepseek import DeepSeekProvider
 from brain.providers.deterministic import DeterministicProvider
 from brain.providers.failover import FailoverProvider
@@ -37,7 +38,8 @@ def build_brain_from_env(environ=None) -> Brain:
     deepseek_key = _env_value(env, "FALCON_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY")
     gemini_key = _env_value(env, "FALCON_GEMINI_API_KEY", "GEMINI_API_KEY")
     openai_key = _env_value(env, "FALCON_OPENAI_API_KEY", "OPENAI_API_KEY")
-    if not mode and (deepseek_key or gemini_key): mode = "auto"
+    bedrock_key = _env_value(env, "AWS_BEARER_TOKEN_BEDROCK", "BEDROCK_API_KEY")
+    if not mode and (deepseek_key or gemini_key or bedrock_key): mode = "auto"
     if not mode and openai_key: mode = "openai"
     if not mode and endpoint: mode = "json_http"
     if not mode: return Brain()
@@ -45,6 +47,7 @@ def build_brain_from_env(environ=None) -> Brain:
     timeout = float(env.get("FALCON_INTELLIGENCE_TIMEOUT", "60"))
     deepseek_timeout = float(env.get("FALCON_DEEPSEEK_TIMEOUT", timeout))
     gemini_timeout = float(env.get("FALCON_GEMINI_TIMEOUT", timeout))
+    bedrock_timeout = float(env.get("FALCON_BEDROCK_TIMEOUT", timeout))
 
     def deepseek():
         if not deepseek_key: raise ValueError("falcon_deepseek_api_key_required")
@@ -52,14 +55,21 @@ def build_brain_from_env(environ=None) -> Brain:
     def gemini():
         if not gemini_key: raise ValueError("falcon_gemini_api_key_required")
         return GeminiProvider(gemini_key,model=str(env.get("FALCON_GEMINI_MODEL", "gemini-3.5-flash-lite")).strip(),timeout=gemini_timeout,max_attempts=int(env.get("FALCON_GEMINI_MAX_ATTEMPTS", "2")),retry_delay=float(env.get("FALCON_GEMINI_RETRY_DELAY", "1")),max_output_tokens=int(env.get("FALCON_GEMINI_MAX_OUTPUT_TOKENS", "4096")))
+    def bedrock():
+        if not bedrock_key: raise ValueError("falcon_bedrock_api_key_required")
+        # boto3 recognizes this Bedrock-specific bearer-token environment variable.
+        os.environ["AWS_BEARER_TOKEN_BEDROCK"] = bedrock_key
+        return BedrockProvider(model=str(env.get("FALCON_BEDROCK_MODEL", "")).strip(),region=str(env.get("FALCON_BEDROCK_REGION", "ap-south-1")).strip(),timeout=bedrock_timeout,max_tokens=int(env.get("FALCON_BEDROCK_MAX_TOKENS", "4096")))
     if mode in {"auto", "deepseek_gemini", "multi"}:
         providers=[]
         if deepseek_key:providers.append(("deepseek",deepseek()))
         if gemini_key:providers.append(("gemini",gemini()))
+        if bedrock_key and str(env.get("FALCON_BEDROCK_MODEL","")).strip():providers.append(("bedrock",bedrock()))
         if not providers:raise ValueError("falcon_live_intelligence_key_required")
         return Brain(providers[0][1] if len(providers)==1 else FailoverProvider(providers))
     if mode=="deepseek":return Brain(deepseek())
     if mode=="gemini":return Brain(gemini())
+    if mode=="bedrock":return Brain(bedrock())
     if mode=="openai":
         if not openai_key:raise ValueError("falcon_openai_api_key_required")
         return Brain(OpenAIResponsesProvider(openai_key,model=str(env.get("FALCON_OPENAI_MODEL","gpt-5.6-sol")).strip(),timeout=timeout))
